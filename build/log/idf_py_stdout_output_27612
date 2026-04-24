@@ -1,18 +1,0 @@
-Command: ninja all
-[1/9] Performing build step for 'bootloader'
-[1/1] C:\WINDOWS\system32\cmd.exe /C "cd /D "C:\Users\Bharath Mohan\aura-synth-firmware\build\bootloader" && C:\Espressif\tools\python\v6.0\venv\Scripts\python.exe C:/esp/v6.0/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 bootloader 0x1000 "C:/Users/Bharath Mohan/aura-synth-firmware/build/bootloader/bootloader.bin""
-Bootloader binary size 0x6610 bytes. 0x9f0 bytes (9%) free.
-[2/9] Building C object esp-idf/main/CMakeFiles/__idf_main.dir/mixer.c.obj
-[3/9] No install step for 'bootloader'
-[4/9] Linking C static library esp-idf\main\libmain.a
-[5/9] Completed 'bootloader'
-[6/9] Generating esp-idf/esp_system/ld/sections.ld
-[7/9] Linking CXX executable aura_synth.elf
-[8/9] Generating binary image from built executable
-esptool v5.3.dev2
-Creating ESP32 image...
-Merged 2 ELF sections.
-Successfully created ESP32 image.
-Generated C:/Users/Bharath Mohan/aura-synth-firmware/build/aura_synth.bin
-[9/9] C:\WINDOWS\system32\cmd.exe /C "cd /D "C:\Users\Bharath Mohan\aura-synth-firmware\build" && C:\Espressif\tools\python\v6.0\venv\Scripts\python.exe C:/esp/v6.0/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 partition --type app "C:/Users/Bharath Mohan/aura-synth-firmware/build/partition_table/partition-table.bin" "C:/Users/Bharath Mohan/aura-synth-firmware/build/aura_synth.bin""
-aura_synth.bin binary size 0x5d490 bytes. Smallest app partition is 0x300000 bytes. 0x2a2b70 bytes (88%) free.
