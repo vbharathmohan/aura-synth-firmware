@@ -1,9 +1,0 @@
--Wno-frame-address
--mlongcalls
--fno-builtin-memcpy
--fno-builtin-memset
--fno-builtin-bzero
--mdisable-hardware-atomics
-"-specs=/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/specs/picolibc.specs"
--mfix-esp32-psram-cache-issue
--mfix-esp32-psram-cache-strategy=memw
