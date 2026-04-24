@@ -139,13 +139,14 @@ audio_block_t *mixer_process(const shared_state_t *snap)
 
     /* --- Process drum/piano triggers --- */
     if (snap->drum.trigger) {
-        if (snap->mode == MODE_DRUMS) {
-            sampler_trigger(snap->drum.slot, snap->drum.velocity, 1.0f, false);
-        } else if (snap->mode == MODE_PIANO) {
+        if (snap->mode == MODE_PIANO) {
             /* Piano: pitch-shift a base sample. Slot 8 = piano base.
              * Map piano_note (0-7) to speed via semitone ratio. */
             float speed = powf(2.0f, (float)snap->drum.slot / 12.0f);
             sampler_trigger(8, snap->drum.velocity, speed, false);
+        } else {
+            /* Drums work in ANY mode — so synth + drums can play together */
+            sampler_trigger(snap->drum.slot, snap->drum.velocity, 1.0f, false);
         }
     }
 
