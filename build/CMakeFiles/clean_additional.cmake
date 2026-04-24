@@ -16,9 +16,12 @@ if("${CONFIG}" STREQUAL "" OR "${CONFIG}" STREQUAL "")
   "flash_project_args"
   "flasher_args.json"
   "flasher_args.json.in"
+  "hihat.wav.S"
+  "kick.wav.S"
   "ldgen_libraries"
   "ldgen_libraries.in"
   "project_elf_src_esp32.c"
+  "snare.wav.S"
   "x509_crt_bundle.S"
   )
 endif()

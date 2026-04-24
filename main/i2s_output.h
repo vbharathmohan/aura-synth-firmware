@@ -35,9 +35,9 @@ extern "C" {
  * GPIO pin assignments for I2S.
  * Change these to match your wiring to the DAC board.
  */
-#define I2S_PIN_BCLK        26    /* bit clock */
-#define I2S_PIN_WS          25    /* word select (L/R clock) */
-#define I2S_PIN_DOUT        22    /* data out to DAC */
+#define I2S_PIN_BCLK        26    /* bit clock  — pin A0 on Feather */
+#define I2S_PIN_WS          25    /* word select — pin A1 on Feather */
+#define I2S_PIN_DOUT        4     /* data out   — pin A5 on Feather */
 
 /**
  * Number of DMA buffers. More buffers = more latency tolerance

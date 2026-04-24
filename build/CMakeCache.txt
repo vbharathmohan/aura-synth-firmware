@@ -365,9 +365,6 @@ PYTHON:UNINITIALIZED=C:\Espressif\tools\python\v6.0\venv\Scripts\python.exe
 //No help, variable specified on the command line.
 PYTHON_DEPS_CHECKED:UNINITIALIZED=1
 
-//No help, variable specified on the command line.
-SDKCONFIG:UNINITIALIZED=c:\Users\Bharath Mohan\aura-synth-firmware\sdkconfig
-
 //Value Computed by CMake
 TF-PSA-Crypto_BINARY_DIR:STATIC=C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/mbedtls/mbedtls/tf-psa-crypto
 

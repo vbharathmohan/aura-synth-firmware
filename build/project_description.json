@@ -1,7 +1,7 @@
 {
     "version":            "1.3",
     "project_name":       "aura_synth",
-    "project_version":    "1",
+    "project_version":    "58463d9-dirty",
     "project_path":       "C:/Users/Bharath Mohan/aura-synth-firmware",
     "idf_path":           "C:/esp/v6.0/esp-idf",
     "build_dir":          "C:/Users/Bharath Mohan/aura-synth-firmware/build",
@@ -1735,7 +1735,7 @@
             "managed_reqs": [],
             "managed_priv_reqs": [],
             "file": "C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/main/libmain.a",
-            "sources": [ "C:/Users/Bharath Mohan/aura-synth-firmware/main/main.c", "C:/Users/Bharath Mohan/aura-synth-firmware/main/shared_state.c", "C:/Users/Bharath Mohan/aura-synth-firmware/main/audio_block.c", "C:/Users/Bharath Mohan/aura-synth-firmware/main/i2s_output.c" ],
+            "sources": [ "C:/Users/Bharath Mohan/aura-synth-firmware/main/main.c", "C:/Users/Bharath Mohan/aura-synth-firmware/main/shared_state.c", "C:/Users/Bharath Mohan/aura-synth-firmware/main/audio_block.c", "C:/Users/Bharath Mohan/aura-synth-firmware/main/i2s_output.c", "C:/Users/Bharath Mohan/aura-synth-firmware/main/synth_voice.c", "C:/Users/Bharath Mohan/aura-synth-firmware/main/sampler.c", "C:/Users/Bharath Mohan/aura-synth-firmware/main/effects.c", "C:/Users/Bharath Mohan/aura-synth-firmware/main/mixer.c", "C:/Users/Bharath Mohan/aura-synth-firmware/main/loop_recorder.c", "C:/Users/Bharath Mohan/aura-synth-firmware/main/audio_task.c", "C:/Users/Bharath Mohan/aura-synth-firmware/build/kick.wav.S", "C:/Users/Bharath Mohan/aura-synth-firmware/build/snare.wav.S", "C:/Users/Bharath Mohan/aura-synth-firmware/build/hihat.wav.S" ],
             "include_dirs": [ "." ]
         },
         "mbedtls": {

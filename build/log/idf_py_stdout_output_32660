@@ -1,0 +1,145 @@
+Command: C:\Espressif\tools\python\v6.0\venv\Scripts\python.exe C:\esp\v6.0\esp-idf\tools/idf_monitor.py -p COM3 -b 115200 --toolchain-prefix xtensa-esp32-elf- --target esp32 --revision 0 C:\Users\Bharath Mohan\aura-synth-firmware\build\aura_synth.elf C:\Users\Bharath Mohan\aura-synth-firmware\build\bootloader\bootloader.elf --force-color -m 'C:\Espressif\tools\python\v6.0\venv\Scripts\python.exe' 'C:\esp\v6.0\esp-idf\tools\idf.py'
+ets Jul 29 2019 12:21:46
+
+rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 271414342, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0040,len:6272
+load:0x40078000,len:15848
+load:0x40080400,len:3920
+entry 0x40080644
+[0;32mI (28) boot: ESP-IDF v6.0 2nd stage bootloader[0m
+[0;32mI (28) boot: compile time Apr 24 2026 01:20:28[0m
+[0;32mI (28) boot: Multicore bootloader[0m
+[0;32mI (29) boot: chip revision: v3.1[0m
+[0;32mI (32) boot.esp32: SPI Speed      : 40MHz[0m
+[0;32mI (36) boot.esp32: SPI Mode       : DIO[0m
+[0;32mI (39) boot.esp32: SPI Flash Size : 4MB[0m
+[0;32mI (43) boot: Enabling RNG early entropy source...[0m
+[0;32mI (47) boot: Partition Table:[0m
+[0;32mI (50) boot: ## Label            Usage          Type ST Offset   Length[0m
+[0;32mI (56) boot:  0 nvs              WiFi data        01 02 00009000 00006000[0m
+[0;32mI (63) boot:  1 phy_init         RF data          01 01 0000f000 00001000[0m
+[0;32mI (69) boot:  2 factory          factory app      00 00 00010000 00300000[0m
+[0;32mI (76) boot: End of partition table[0m
+[0;32mI (79) esp_image: segment 0: paddr=00010020 vaddr=3f400020 size=69394h (430996) map[0m
+[0;32mI (240) esp_image: segment 1: paddr=000793bc vaddr=3ffb0000 size=02a10h ( 10768) load[0m
+[0;32mI (245) esp_image: segment 2: paddr=0007bdd4 vaddr=40080000 size=04244h ( 16964) load[0m
+[0;32mI (252) esp_image: segment 3: paddr=00080020 vaddr=400d0020 size=133f0h ( 78832) map[0m
+[0;32mI (280) esp_image: segment 4: paddr=00093418 vaddr=40084244 size=080e8h ( 33000) load[0m
+[0;32mI (294) esp_image: segment 5: paddr=0009b508 vaddr=50000000 size=00028h (    40) load[0m
+[0;32mI (300) boot: Loaded app from partition at offset 0x10000[0m
+[0;32mI (301) boot: Disabling RNG early entropy source...[0m
+[0;32mI (312) quad_psram: This chip is ESP32-PICO-V3-02[0m
+[0;32mI (313) esp_psram: Found 2MB PSRAM device[0m
+[0;32mI (313) esp_psram: Speed: 40MHz[0m
+[0;32mI (313) esp_psram: PSRAM initialized, cache is in low/high (2-core) mode.[0m
+[0;32mI (320) cpu_start: Multicore app[0m
+[0;32mI (754) esp_psram: SPI SRAM memory test OK[0m
+[0;32mI (762) cpu_start: GPIO 3 and 1 are used as console UART I/O pins[0m
+[0;32mI (762) cpu_start: Pro cpu start user code[0m
+[0;32mI (762) cpu_start: cpu freq: 240000000 Hz[0m
+[0;32mI (764) app_init: Application information:[0m
+[0;32mI (768) app_init: Project name:     aura_synth[0m
+[0;32mI (772) app_init: App version:      58463d9-dirty[0m
+[0;32mI (777) app_init: Compile time:     Apr 24 2026 01:20:12[0m
+[0;32mI (782) app_init: ELF file SHA256:  1cf618589...[0m
+[0;32mI (786) app_init: ESP-IDF:          v6.0[0m
+[0;32mI (790) efuse_init: Min chip rev:     v0.0[0m
+[0;32mI (793) efuse_init: Max chip rev:     v3.99 [0m
+[0;32mI (797) efuse_init: Chip rev:         v3.1[0m
+[0;32mI (802) heap_init: Initializing. RAM available for dynamic allocation:[0m
+[0;32mI (808) heap_init: At 3FFAE6E0 len 00001920 (6 KiB): DRAM[0m
+[0;32mI (813) heap_init: At 3FFC39F8 len 0001C608 (113 KiB): DRAM[0m
+[0;32mI (818) heap_init: At 3FFE0440 len 00003AE0 (14 KiB): D/IRAM[0m
+[0;32mI (823) heap_init: At 3FFE4350 len 0001BCB0 (111 KiB): D/IRAM[0m
+[0;32mI (829) heap_init: At 4008C32C len 00013CD4 (79 KiB): IRAM[0m
+[0;32mI (835) esp_psram: Adding pool of 2048K of PSRAM memory to heap allocator[0m
+[0;32mI (842) spi_flash: detected chip: generic[0m
+[0;32mI (844) spi_flash: flash io: dio[0m
+[0;33mW (847) spi_flash: Detected size(8192k) larger than the size in the binary image header(4096k). Using the size in the binary image header.[0m
+[0;32mI (861) main_task: Started on CPU0[0m
+[0;32mI (864) main_task: Calling app_main()[0m
+[0;32mI (866) main: ========================================[0m
+[0;32mI (871) main:   AURA-SYNTH — Gestural Music Engine[0m
+[0;32mI (876) main: ========================================[0m
+[0;32mI (880) main: Free heap: 2331840 bytes[0m
+[0;32mI (884) main: PSRAM: 2045 KB available[0m
+[0;32mI (887) main: [1/6] Shared state OK (144 bytes)[0m
+[0;32mI (892) audio_block: Block pool initialized: 32 blocks × 2048 bytes = 64 KB[0m
+[0;32mI (898) main: [2/6] Block pool OK[0m
+[0;32mI (903) i2s_output: I2S initialized: 44100 Hz, 16-bit stereo, BCLK=26 WS=25 DOUT=4, DMA bufs=4 × 256 frames[0m
+[0;32mI (911) main: [3/6] I2S OK[0m
+[0;32mI (913) sampler: Sampler initialized: 16 slots, 8 voices[0m
+[0;32mI (918) sampler: Registered [0] 'kick': 81078 samples, 44100 Hz, 2ch, 1.84s[0m
+[0;32mI (925) sampler: Registered [1] 'snare': 7235 samples, 44100 Hz, 2ch, 0.16s[0m
+[0;32mI (932) sampler: Registered [2] 'hihat': 6313 samples, 44100 Hz, 2ch, 0.14s[0m
+[0;32mI (938) main: [4/6] Sampler OK[0m
+[0;32mI (941) mixer: Mixer initialized: 4 tracks, 44100 Hz[0m
+[0;32mI (958) effects: Delay initialized: 300ms, 13230 samples, 103 KB PSRAM[0m
+[0;32mI (960) main:   Master delay: 300ms, feedback=0.3, mix=0.25[0m
+[0;32mI (960) main: [5/6] Mixer + effects OK[0m
+[0;32mI (971) loop_rec: Loop recorder initialized: 4 tracks × 2000 frames = 62 KB PSRAM[0m
+[0;32mI (973) main: [6/6] Loop recorder OK[0m
+[0;32mI (974) main: Heap after init: 2155676 bytes[0m
+[0;32mI (978) main: PSRAM after init: 1878 KB[0m
+[0;32mI (982) audio_task: Audio task started on core 1[0m
+[0;32mI (982) main: Sensor stub on core 0[0m
+[0;32mI (982) main: ========================================[0m
+[0;32mI (994) main:   Pipeline running. Connect DAC.[0m
+[0;32mI (998) main:   Stub: 0-10s synth, 10-20s drums,[0m
+[0;32mI (999) main: t=0s mode=SYN trk=0 pitch=48 rec=N play=N loop=0[0m
+[0;32mI (1008) main:         20-25s record, 25s+ playback[0m
+[0;32mI (1013) main: ========================================[0m
+[0;32mI (1018) main_task: Returned from app_main()[0m
+[0;32mI (6008) main: t=5s mode=SYN trk=0 pitch=60 rec=N play=N loop=0[0m
+[0;32mI (6771) audio_task: Blk=1000 | Pool=32/32 | Sampler=0 | Mode=SYN | Rec=N Play=N Loop=0 Head=0[0m
+[0;32mI (11008) main: t=10s mode=DRM trk=0 pitch=48 rec=N play=N loop=0[0m
+[0;32mI (12576) audio_task: Blk=2000 | Pool=32/32 | Sampler=0 | Mode=DRM | Rec=N Play=N Loop=0 Head=0[0m
+[0;32mI (16008) main: t=15s mode=DRM trk=0 pitch=48 rec=N play=N loop=0[0m
+[0;32mI (18381) audio_task: Blk=3000 | Pool=32/32 | Sampler=1 | Mode=DRM | Rec=N Play=N Loop=0 Head=0[0m
+[0;32mI (21008) main: Stub: pressing RECORD[0m
+[0;32mI (21008) main: t=20s mode=SYN trk=0 pitch=48 rec=N play=N loop=0[0m
+[0;32mI (24186) audio_task: Blk=4000 | Pool=32/32 | Sampler=0 | Mode=SYN | Rec=N Play=N Loop=0 Head=0[0m
+[0;32mI (26009) main: Stub: pressing RECORD (stop)[0m
+[0;32mI (26010) main: t=25s mode=SYN trk=0 pitch=84 rec=N play=N loop=0[0m
+[0;32mI (29991) audio_task: Blk=5000 | Pool=32/32 | Sampler=0 | Mode=SYN | Rec=N Play=N Loop=0 Head=0[0m
+[0;32mI (31010) main: t=30s mode=SYN trk=0 pitch=72 rec=N play=N loop=0[0m
+[0;32mI (35796) audio_task: Blk=6000 | Pool=32/32 | Sampler=0 | Mode=SYN | Rec=N Play=N Loop=0 Head=0[0m
+[0;32mI (36010) main: t=35s mode=SYN trk=0 pitch=72 rec=N play=N loop=0[0m
+[0;32mI (41010) main: t=40s mode=SYN trk=0 pitch=72 rec=N play=N loop=0[0m
+[0;32mI (41601) audio_task: Blk=7000 | Pool=32/32 | Sampler=0 | Mode=SYN | Rec=N Play=N Loop=0 Head=0[0m
+[0;32mI (46011) main: t=45s mode=SYN trk=0 pitch=72 rec=N play=N loop=0[0m
+[0;32mI (47406) audio_task: Blk=8000 | Pool=32/32 | Sampler=0 | Mode=SYN | Rec=N Play=N Loop=0 Head=0[0m
+[0;32mI (51011) main: t=50s mode=SYN trk=0 pitch=72 rec=N play=N loop=0[0m
+[0;32mI (53211) audio_task: Blk=9000 | Pool=32/32 | Sampler=0 | Mode=SYN | Rec=N Play=N Loop=0 Head=0[0m
+[0;32mI (56011) main: t=55s mode=SYN trk=0 pitch=72 rec=N play=N loop=0[0m
+[0;32mI (59016) audio_task: Blk=10000 | Pool=32/32 | Sampler=0 | Mode=SYN | Rec=N Play=N Loop=0 Head=0[0m
+[0;32mI (61011) main: t=60s mode=SYN trk=0 pitch=72 rec=N play=N loop=0[0m
+[0;32mI (64821) audio_task: Blk=11000 | Pool=32/32 | Sampler=0 | Mode=SYN | Rec=N Play=N Loop=0 Head=0[0m
+[0;32mI (66011) main: t=65s mode=SYN trk=0 pitch=72 rec=N play=N loop=0[0m
+[0;32mI (70626) audio_task: Blk=12000 | Pool=32/32 | Sampler=0 | Mode=SYN | Rec=N Play=N Loop=0 Head=0[0m
+[0;32mI (71011) main: t=70s mode=SYN trk=0 pitch=72 rec=N play=N loop=0[0m
+[0;32mI (76012) main: t=75s mode=SYN trk=0 pitch=72 rec=N play=N loop=0[0m
+[0;32mI (76431) audio_task: Blk=13000 | Pool=32/32 | Sampler=0 | Mode=SYN | Rec=N Play=N Loop=0 Head=0[0m
+[0;32mI (81012) main: t=80s mode=SYN trk=0 pitch=72 rec=N play=N loop=0[0m
+[0;32mI (82236) audio_task: Blk=14000 | Pool=32/32 | Sampler=0 | Mode=SYN | Rec=N Play=N Loop=0 Head=0[0m
+[0;32mI (86012) main: t=85s mode=SYN trk=0 pitch=72 rec=N play=N loop=0[0m
+[0;32mI (88041) audio_task: Blk=15000 | Pool=32/32 | Sampler=0 | Mode=SYN | Rec=N Play=N Loop=0 Head=0[0m
+[0;32mI (91012) main: t=90s mode=SYN trk=0 pitch=72 rec=N play=N loop=0[0m
+[0;32mI (93846) audio_task: Blk=16000 | Pool=32/32 | Sampler=0 | Mode=SYN | Rec=N Play=N Loop=0 Head=0[0m
+[0;32mI (96012) main: t=95s mode=SYN trk=0 pitch=72 rec=N play=N loop=0[0m
+[0;32mI (99651) audio_task: Blk=17000 | Pool=32/32 | Sampler=0 | Mode=SYN | Rec=N Play=N Loop=0 Head=0[0m
+[0;32mI (101012) main: t=100s mode=SYN trk=0 pitch=72 rec=N play=N loop=0[0m
+[0;32mI (105456) audio_task: Blk=18000 | Pool=32/32 | Sampler=0 | Mode=SYN | Rec=N Play=N Loop=0 Head=0[0m
+[0;32mI (106012) main: t=105s mode=SYN trk=0 pitch=72 rec=N play=N loop=0[0m
+[0;32mI (111012) main: t=110s mode=SYN trk=0 pitch=72 rec=N play=N loop=0[0m
+[0;32mI (111261) audio_task: Blk=19000 | Pool=32/32 | Sampler=0 | Mode=SYN | Rec=N Play=N Loop=0 Head=0[0m
+[0;32mI (116012) main: t=115s mode=SYN trk=0 pitch=72 rec=N play=N loop=0[0m
+[0;32mI (117066) audio_task: Blk=20000 | Pool=32/32 | Sampler=0 | Mode=SYN | Rec=N Play=N Loop=0 Head=0[0m
+[0;32mI (121012) main: t=120s mode=SYN trk=0 pitch=72 rec=N play=N loop=0[0m
+[0;32mI (122871) audio_task: Blk=21000 | Pool=32/32 | Sampler=0 | Mode=SYN | Rec=N Play=N Loop=0 Head=0[0m
+[0;32mI (126012) main: t=125s mode=SYN trk=0 pitch=72 rec=N play=N loop=0[0m
+[0;32mI (128676) audio_task: Blk=22000 | Pool=32/32 | Sampler=0 | Mode=SYN | Rec=N Play=N Loop=0 Head=0[0m
+[0;32mI (131012) main: t=130s mode=SYN trk=0 pitch=72 rec=N play=N loop=0[0m
