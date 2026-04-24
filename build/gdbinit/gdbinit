@@ -1,2 +1,2 @@
-source C:/Users/Bharath Mohan/aura-synth-firmware/build/gdbinit/symbols
-source C:/Users/Bharath Mohan/aura-synth-firmware/build/gdbinit/connect
+source /Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/gdbinit/symbols
+source /Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/gdbinit/connect

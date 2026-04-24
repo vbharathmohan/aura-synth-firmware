@@ -1,13 +1,13 @@
 # Target labels
  bootloader
 # Source files and their labels
-C:/Users/Bharath Mohan/aura-synth-firmware/build/CMakeFiles/bootloader
-C:/Users/Bharath Mohan/aura-synth-firmware/build/CMakeFiles/bootloader.rule
-C:/Users/Bharath Mohan/aura-synth-firmware/build/CMakeFiles/bootloader-complete.rule
-C:/Users/Bharath Mohan/aura-synth-firmware/build/bootloader-prefix/src/bootloader-stamp/bootloader-build.rule
-C:/Users/Bharath Mohan/aura-synth-firmware/build/bootloader-prefix/src/bootloader-stamp/bootloader-configure.rule
-C:/Users/Bharath Mohan/aura-synth-firmware/build/bootloader-prefix/src/bootloader-stamp/bootloader-download.rule
-C:/Users/Bharath Mohan/aura-synth-firmware/build/bootloader-prefix/src/bootloader-stamp/bootloader-install.rule
-C:/Users/Bharath Mohan/aura-synth-firmware/build/bootloader-prefix/src/bootloader-stamp/bootloader-mkdir.rule
-C:/Users/Bharath Mohan/aura-synth-firmware/build/bootloader-prefix/src/bootloader-stamp/bootloader-patch.rule
-C:/Users/Bharath Mohan/aura-synth-firmware/build/bootloader-prefix/src/bootloader-stamp/bootloader-update.rule
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/CMakeFiles/bootloader
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/CMakeFiles/bootloader.rule
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/CMakeFiles/bootloader-complete.rule
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/bootloader-prefix/src/bootloader-stamp/bootloader-build.rule
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/bootloader-prefix/src/bootloader-stamp/bootloader-configure.rule
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/bootloader-prefix/src/bootloader-stamp/bootloader-download.rule
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/bootloader-prefix/src/bootloader-stamp/bootloader-install.rule
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/bootloader-prefix/src/bootloader-stamp/bootloader-mkdir.rule
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/bootloader-prefix/src/bootloader-stamp/bootloader-patch.rule
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/bootloader-prefix/src/bootloader-stamp/bootloader-update.rule

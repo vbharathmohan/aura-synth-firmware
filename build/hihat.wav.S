@@ -1,4 +1,4 @@
-/* * Data converted from C:/Users/Bharath Mohan/aura-synth-firmware/samples/hihat.wav
+/* * Data converted from /Users/losmachinos/esp/esp-idf/aura-synth-firmware/samples/hihat.wav
  */
 .data
 #if !defined (__APPLE__) && !defined (__linux__)

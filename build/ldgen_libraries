@@ -1,197 +1,206 @@
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/xtensa/libxtensa.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/cxx/libcxx.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_libc/libesp_libc.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/freertos/libfreertos.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hw_support/libesp_hw_support.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/heap/libheap.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/log/liblog.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/soc/libsoc.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/hal/libhal.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_rom/libesp_rom.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_common/libesp_common.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_system/libesp_system.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_stdio/libesp_stdio.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/xtensa/libxtensa.a
-C:/esp/v6.0/esp-idf/components/xtensa/esp32/libxt_hal.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/vfs/libvfs.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_uart/libesp_driver_uart.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_uart/libesp_hal_uart.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_pm/libesp_pm.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_gpio/libesp_driver_gpio.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_gpio/libesp_hal_gpio.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_timer/libesp_timer.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_timg/libesp_hal_timg.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_dma/libesp_driver_dma.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_mm/libesp_mm.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/spi_flash/libspi_flash.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_mspi/libesp_hal_mspi.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_gpspi/libesp_hal_gpspi.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_clock/libesp_hal_clock.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/bootloader_support/libbootloader_support.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/mbedtls/libmbedtls.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_security/libesp_security.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_security/libesp_hal_security.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/efuse/libefuse.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_partition/libesp_partition.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/app_update/libapp_update.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_app_format/libesp_app_format.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_bootloader_format/libesp_bootloader_format.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/lwip/liblwip.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/mbedtls/mbedtls/library/libmbedtls.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/mbedtls/mbedtls/library/libmbedx509.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/mbedtls/mbedtls/tf-psa-crypto/core/libtfpsacrypto.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/mbedtls/mbedtls/tf-psa-crypto/drivers/builtin/libmbed-builtin.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_security/libesp_security.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/mbedtls/mbedtls/tf-psa-crypto/drivers/everest/libeverest.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/mbedtls/mbedtls/tf-psa-crypto/drivers/p256-m/libp256m.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/nvs_flash/libnvs_flash.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/nvs_sec_provider/libnvs_sec_provider.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/mbedtls/libmbedtls.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_wdt/libesp_hal_wdt.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_ana_conv/libesp_hal_ana_conv.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_i2s/libesp_hal_i2s.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_psram/libesp_psram.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_ringbuf/libesp_ringbuf.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/vfs/libvfs.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_gdbstub/libesp_gdbstub.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_adc/libesp_adc.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_i2s/libesp_driver_i2s.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_i2c/libesp_hal_i2c.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_touch_sens/libesp_hal_touch_sens.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_http_client/libesp_http_client.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_event/libesp_event.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/tcp_transport/libtcp_transport.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp-tls/libesp-tls.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/http_parser/libhttp_parser.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_http_server/libesp_http_server.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_wifi/libesp_wifi.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_phy/libesp_phy.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_netif/libesp_netif.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/wpa_supplicant/libwpa_supplicant.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_coex/libesp_coex.a
-C:/esp/v6.0/esp-idf/components/esp_wifi/lib/esp32/libcore.a
-C:/esp/v6.0/esp-idf/components/esp_wifi/lib/esp32/libespnow.a
-C:/esp/v6.0/esp-idf/components/esp_wifi/lib/esp32/libmesh.a
-C:/esp/v6.0/esp-idf/components/esp_wifi/lib/esp32/libnet80211.a
-C:/esp/v6.0/esp-idf/components/esp_wifi/lib/esp32/libpp.a
-C:/esp/v6.0/esp-idf/components/esp_wifi/lib/esp32/libsmartconfig.a
-C:/esp/v6.0/esp-idf/components/esp_wifi/lib/esp32/libwapi.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_https_ota/libesp_https_ota.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/pthread/libpthread.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_stdio/libesp_stdio.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_gpspi/libesp_hal_gpspi.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_clock/libesp_hal_clock.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_mspi/libesp_hal_mspi.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_security/libesp_hal_security.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_app_format/libesp_app_format.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_bootloader_format/libesp_bootloader_format.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/app_update/libapp_update.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_partition/libesp_partition.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/efuse/libefuse.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_gpio/libesp_driver_gpio.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_uart/libesp_hal_uart.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_pm/libesp_pm.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_mm/libesp_mm.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_dma/libesp_driver_dma.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_timg/libesp_hal_timg.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_wdt/libesp_hal_wdt.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_i2s/libesp_hal_i2s.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_ana_conv/libesp_hal_ana_conv.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/bootloader_support/libbootloader_support.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/spi_flash/libspi_flash.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_system/libesp_system.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_common/libesp_common.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_rom/libesp_rom.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/hal/libhal.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/log/liblog.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/heap/libheap.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/soc/libsoc.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_gpio/libesp_hal_gpio.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_touch_sens/libesp_hal_touch_sens.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hw_support/libesp_hw_support.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/freertos/libfreertos.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_libc/libesp_libc.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/pthread/libpthread.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/cxx/libcxx.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_timer/libesp_timer.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_ringbuf/libesp_ringbuf.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_psram/libesp_psram.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_uart/libesp_driver_uart.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_gptimer/libesp_driver_gptimer.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_event/libesp_event.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/nvs_sec_provider/libnvs_sec_provider.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/nvs_flash/libnvs_flash.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_phy/libesp_phy.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/lwip/liblwip.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_netif/libesp_netif.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/wpa_supplicant/libwpa_supplicant.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_coex/libesp_coex.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_wifi/libesp_wifi.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_spi/libesp_driver_spi.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_gdbstub/libesp_gdbstub.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/unity/libunity.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/cmock/libcmock.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/unity/libunity.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/console/libconsole.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_i2c/libesp_hal_i2c.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_twai/libesp_hal_twai.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/driver/libdriver.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_twai/libesp_hal_twai.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/http_parser/libhttp_parser.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp-tls/libesp-tls.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_i2s/libesp_driver_i2s.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_adc/libesp_adc.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_cam/libesp_driver_cam.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_dac/libesp_driver_dac.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_i2c/libesp_driver_i2c.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_ledc/libesp_hal_ledc.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_ledc/libesp_driver_ledc.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_ledc/libesp_hal_ledc.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_mcpwm/libesp_hal_mcpwm.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_mcpwm/libesp_driver_mcpwm.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_mcpwm/libesp_hal_mcpwm.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_pcnt/libesp_hal_pcnt.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_pcnt/libesp_driver_pcnt.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_pcnt/libesp_hal_pcnt.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_rmt/libesp_hal_rmt.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_rmt/libesp_driver_rmt.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_rmt/libesp_hal_rmt.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/sdmmc/libsdmmc.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_sd_intf/libesp_driver_sd_intf.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/sdmmc/libsdmmc.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_sdio/libesp_driver_sdio.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_sdm/libesp_driver_sdm.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_sdmmc/libesp_driver_sdmmc.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_sd_intf/libesp_driver_sd_intf.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_sdspi/libesp_driver_sdspi.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_spi/libesp_driver_spi.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_touch_sens/libesp_driver_touch_sens.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_twai/libesp_driver_twai.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_eth/libesp_eth.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_lcd/libesp_hal_lcd.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hid/libesp_hid.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/tcp_transport/libtcp_transport.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_http_client/libesp_http_client.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_http_server/libesp_http_server.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_https_ota/libesp_https_ota.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_https_server/libesp_https_server.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_lcd/libesp_lcd.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_i2c/libesp_driver_i2c.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_hal_lcd/libesp_hal_lcd.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/protobuf-c/libprotobuf-c.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/protocomm/libprotocomm.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/protobuf-c/libprotobuf-c.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/console/libconsole.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_local_ctrl/libesp_local_ctrl.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/protocomm/libprotocomm.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_https_server/libesp_https_server.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/wear_levelling/libwear_levelling.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/fatfs/libfatfs.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/wear_levelling/libwear_levelling.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_sdmmc/libesp_driver_sdmmc.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/esp_driver_sdspi/libesp_driver_sdspi.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/perfmon/libperfmon.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/rt/librt.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/spiffs/libspiffs.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/main/libmain.a
-C:/Users/Bharath Mohan/aura-synth-firmware/build/esp-idf/driver/libdriver.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/xtensa/libxtensa.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/cxx/libcxx.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_libc/libesp_libc.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/freertos/libfreertos.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hw_support/libesp_hw_support.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/heap/libheap.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/log/liblog.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/soc/libsoc.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/hal/libhal.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_rom/libesp_rom.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_common/libesp_common.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_system/libesp_system.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_stdio/libesp_stdio.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/xtensa/libxtensa.a
+/Users/losmachinos/esp/esp-idf/components/xtensa/esp32/libxt_hal.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/vfs/libvfs.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_uart/libesp_driver_uart.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_uart/libesp_hal_uart.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_pm/libesp_pm.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_gpio/libesp_driver_gpio.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_gpio/libesp_hal_gpio.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_timer/libesp_timer.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_timg/libesp_hal_timg.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_dma/libesp_driver_dma.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_mm/libesp_mm.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/spi_flash/libspi_flash.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_mspi/libesp_hal_mspi.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_gpspi/libesp_hal_gpspi.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_clock/libesp_hal_clock.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/bootloader_support/libbootloader_support.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/mbedtls/libmbedtls.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_security/libesp_security.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_security/libesp_hal_security.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/efuse/libefuse.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_partition/libesp_partition.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/app_update/libapp_update.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_app_format/libesp_app_format.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_bootloader_format/libesp_bootloader_format.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/lwip/liblwip.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/mbedtls/mbedtls/library/libmbedtls.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/mbedtls/mbedtls/library/libmbedx509.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/mbedtls/mbedtls/tf-psa-crypto/core/libtfpsacrypto.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/mbedtls/mbedtls/tf-psa-crypto/drivers/builtin/libmbed-builtin.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_security/libesp_security.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/mbedtls/mbedtls/tf-psa-crypto/drivers/everest/libeverest.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/mbedtls/mbedtls/tf-psa-crypto/drivers/p256-m/libp256m.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/nvs_flash/libnvs_flash.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/nvs_sec_provider/libnvs_sec_provider.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/mbedtls/libmbedtls.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_wdt/libesp_hal_wdt.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_ana_conv/libesp_hal_ana_conv.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_i2s/libesp_hal_i2s.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_psram/libesp_psram.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_ringbuf/libesp_ringbuf.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/vfs/libvfs.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_gdbstub/libesp_gdbstub.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_adc/libesp_adc.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_i2s/libesp_driver_i2s.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_i2c/libesp_hal_i2c.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_touch_sens/libesp_hal_touch_sens.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_pmu/libesp_hal_pmu.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_http_client/libesp_http_client.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_event/libesp_event.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/tcp_transport/libtcp_transport.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp-tls/libesp-tls.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/http_parser/libhttp_parser.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_http_server/libesp_http_server.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_wifi/libesp_wifi.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_phy/libesp_phy.a
+/Users/losmachinos/esp/esp-idf/components/esp_phy/lib/esp32/librtc.a
+/Users/losmachinos/esp/esp-idf/components/esp_phy/lib/esp32/libphy.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_netif/libesp_netif.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/wpa_supplicant/libwpa_supplicant.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_coex/libesp_coex.a
+/Users/losmachinos/esp/esp-idf/components/esp_wifi/lib/esp32/libcore.a
+/Users/losmachinos/esp/esp-idf/components/esp_wifi/lib/esp32/libespnow.a
+/Users/losmachinos/esp/esp-idf/components/esp_wifi/lib/esp32/libmesh.a
+/Users/losmachinos/esp/esp-idf/components/esp_wifi/lib/esp32/libnet80211.a
+/Users/losmachinos/esp/esp-idf/components/esp_wifi/lib/esp32/libpp.a
+/Users/losmachinos/esp/esp-idf/components/esp_wifi/lib/esp32/libsmartconfig.a
+/Users/losmachinos/esp/esp-idf/components/esp_wifi/lib/esp32/libwapi.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_https_ota/libesp_https_ota.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/pthread/libpthread.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_stdio/libesp_stdio.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_gpspi/libesp_hal_gpspi.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_clock/libesp_hal_clock.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_mspi/libesp_hal_mspi.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_security/libesp_hal_security.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_app_format/libesp_app_format.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_bootloader_format/libesp_bootloader_format.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/app_update/libapp_update.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_partition/libesp_partition.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/efuse/libefuse.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_gpio/libesp_driver_gpio.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_uart/libesp_hal_uart.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_pm/libesp_pm.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_mm/libesp_mm.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_dma/libesp_driver_dma.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_timg/libesp_hal_timg.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_wdt/libesp_hal_wdt.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_i2s/libesp_hal_i2s.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_ana_conv/libesp_hal_ana_conv.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/bootloader_support/libbootloader_support.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/spi_flash/libspi_flash.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_system/libesp_system.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_common/libesp_common.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_rom/libesp_rom.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/hal/libhal.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/log/liblog.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/heap/libheap.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/soc/libsoc.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_gpio/libesp_hal_gpio.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_pmu/libesp_hal_pmu.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_touch_sens/libesp_hal_touch_sens.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hw_support/libesp_hw_support.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/freertos/libfreertos.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_libc/libesp_libc.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/pthread/libpthread.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/cxx/libcxx.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_timer/libesp_timer.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_ringbuf/libesp_ringbuf.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_psram/libesp_psram.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_uart/libesp_driver_uart.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_gptimer/libesp_driver_gptimer.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_event/libesp_event.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/nvs_sec_provider/libnvs_sec_provider.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/nvs_flash/libnvs_flash.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_phy/libesp_phy.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/lwip/liblwip.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_netif/libesp_netif.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/wpa_supplicant/libwpa_supplicant.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_coex/libesp_coex.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_wifi/libesp_wifi.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_spi/libesp_driver_spi.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_gdbstub/libesp_gdbstub.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/unity/libunity.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/cmock/libcmock.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/unity/libunity.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/console/libconsole.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_i2c/libesp_hal_i2c.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_twai/libesp_hal_twai.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/driver/libdriver.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_twai/libesp_hal_twai.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/http_parser/libhttp_parser.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp-tls/libesp-tls.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_i2s/libesp_driver_i2s.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_adc/libesp_adc.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_blockdev_util/libesp_blockdev_util.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_cam/libesp_driver_cam.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_dac/libesp_driver_dac.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_i2c/libesp_driver_i2c.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_ledc/libesp_hal_ledc.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_ledc/libesp_driver_ledc.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_ledc/libesp_hal_ledc.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_mcpwm/libesp_hal_mcpwm.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_mcpwm/libesp_driver_mcpwm.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_mcpwm/libesp_hal_mcpwm.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_pcnt/libesp_hal_pcnt.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_pcnt/libesp_driver_pcnt.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_pcnt/libesp_hal_pcnt.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_rmt/libesp_hal_rmt.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_rmt/libesp_driver_rmt.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_rmt/libesp_hal_rmt.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_sd/libesp_hal_sd.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/sdmmc/libsdmmc.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_sd/libesp_hal_sd.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_sd_intf/libesp_driver_sd_intf.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/sdmmc/libsdmmc.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_sdio/libesp_driver_sdio.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_sdm/libesp_driver_sdm.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_sdmmc/libesp_driver_sdmmc.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_sd_intf/libesp_driver_sd_intf.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_sdspi/libesp_driver_sdspi.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_spi/libesp_driver_spi.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_touch_sens/libesp_driver_touch_sens.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_twai/libesp_driver_twai.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_emac/libesp_hal_emac.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_eth/libesp_eth.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_emac/libesp_hal_emac.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_lcd/libesp_hal_lcd.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hid/libesp_hid.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/tcp_transport/libtcp_transport.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_http_client/libesp_http_client.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_http_server/libesp_http_server.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_https_ota/libesp_https_ota.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_https_server/libesp_https_server.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_lcd/libesp_lcd.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_i2c/libesp_driver_i2c.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_hal_lcd/libesp_hal_lcd.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/protobuf-c/libprotobuf-c.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/protocomm/libprotocomm.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/protobuf-c/libprotobuf-c.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/console/libconsole.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_local_ctrl/libesp_local_ctrl.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/protocomm/libprotocomm.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_https_server/libesp_https_server.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/wear_levelling/libwear_levelling.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/fatfs/libfatfs.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/wear_levelling/libwear_levelling.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_sdmmc/libesp_driver_sdmmc.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/esp_driver_sdspi/libesp_driver_sdspi.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/perfmon/libperfmon.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/rt/librt.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/spiffs/libspiffs.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/main/libmain.a
+/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/esp-idf/driver/libdriver.a

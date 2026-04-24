@@ -58,6 +58,7 @@ $<TARGET_FILE:__idf_esp_adc>
 $<TARGET_FILE:__idf_esp_driver_i2s>
 $<TARGET_FILE:__idf_esp_hal_i2c>
 $<TARGET_FILE:__idf_esp_hal_touch_sens>
+$<TARGET_FILE:__idf_esp_hal_pmu>
 $<TARGET_FILE:__idf_esp_http_client>
 $<TARGET_FILE:__idf_esp_event>
 $<TARGET_FILE:__idf_tcp_transport>
@@ -66,6 +67,8 @@ $<TARGET_FILE:__idf_http_parser>
 $<TARGET_FILE:__idf_esp_http_server>
 $<TARGET_FILE:__idf_esp_wifi>
 $<TARGET_FILE:__idf_esp_phy>
+$<TARGET_FILE:esp_phy_librtc>
+$<TARGET_FILE:esp_phy_libphy>
 $<TARGET_FILE:__idf_esp_netif>
 $<TARGET_FILE:__idf_wpa_supplicant>
 $<TARGET_FILE:__idf_esp_coex>
@@ -107,6 +110,7 @@ $<TARGET_FILE:idf::log>
 $<TARGET_FILE:idf::heap>
 $<TARGET_FILE:idf::soc>
 $<TARGET_FILE:idf::esp_hal_gpio>
+$<TARGET_FILE:idf::esp_hal_pmu>
 $<TARGET_FILE:idf::esp_hal_touch_sens>
 $<TARGET_FILE:idf::esp_hw_support>
 $<TARGET_FILE:idf::freertos>
@@ -141,6 +145,7 @@ $<TARGET_FILE:idf::http_parser>
 $<TARGET_FILE:idf::esp-tls>
 $<TARGET_FILE:idf::esp_driver_i2s>
 $<TARGET_FILE:idf::esp_adc>
+$<TARGET_FILE:idf::esp_blockdev_util>
 $<TARGET_FILE:idf::esp_driver_cam>
 $<TARGET_FILE:idf::esp_driver_dac>
 $<TARGET_FILE:idf::esp_driver_i2c>
@@ -156,7 +161,9 @@ $<TARGET_FILE:__idf_esp_hal_pcnt>
 $<TARGET_FILE:idf::esp_hal_rmt>
 $<TARGET_FILE:idf::esp_driver_rmt>
 $<TARGET_FILE:__idf_esp_hal_rmt>
+$<TARGET_FILE:idf::esp_hal_sd>
 $<TARGET_FILE:idf::sdmmc>
+$<TARGET_FILE:__idf_esp_hal_sd>
 $<TARGET_FILE:idf::esp_driver_sd_intf>
 $<TARGET_FILE:__idf_sdmmc>
 $<TARGET_FILE:idf::esp_driver_sdio>
@@ -167,7 +174,9 @@ $<TARGET_FILE:idf::esp_driver_sdspi>
 $<TARGET_FILE:__idf_esp_driver_spi>
 $<TARGET_FILE:idf::esp_driver_touch_sens>
 $<TARGET_FILE:idf::esp_driver_twai>
+$<TARGET_FILE:idf::esp_hal_emac>
 $<TARGET_FILE:idf::esp_eth>
+$<TARGET_FILE:__idf_esp_hal_emac>
 $<TARGET_FILE:idf::esp_hal_lcd>
 $<TARGET_FILE:idf::esp_hid>
 $<TARGET_FILE:idf::tcp_transport>

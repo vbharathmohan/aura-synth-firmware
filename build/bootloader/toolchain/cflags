@@ -1,4 +1,4 @@
--specs=picolibc.specs
+"-specs=/Users/losmachinos/esp/esp-idf/aura-synth-firmware/build/bootloader/specs/picolibc.specs"
 -Wno-frame-address
 -mlongcalls
 -fno-builtin-memcpy

@@ -20,11 +20,8 @@
    to simple macros with numeric values, and/or #if/#endif blocks.
 */
 /*
-
  * Automatically generated file. DO NOT EDIT.
-
- * Espressif IoT Development Framework (ESP-IDF) 6.0.0 Configuration Header
-
+ * Espressif IoT Development Framework (ESP-IDF) 6.1.0 Configuration Header
  */
        
 /* List of deprecated options */
@@ -44,6 +41,16 @@
 /* CPU instruction prefetch padding size for memory protection scenario */
 /* Memory alignment size for PMS */
     /* rtc timer data (s_rtc_timer_retain_mem, see esp_clk.c files). For rtc_timer_data_in_rtc_mem section. */
+/*
+ * APP_BUILD_MINIMIZE_BINARY_CHANGES_PADDING
+ *
+ * Aligns the current location (.) to CONFIG_APP_BUILD_MINIMIZE_BINARY_CHANGES_PADDING.
+ * If more than half of the alignment block is already consumed,
+ * extra padding is applied to skip to the next boundary.
+ * For example, if the current location (.) is 0x1900 and the padding is 4 KB,
+ * the location will be moved to 0x3000 instead of 0x2000 because less than
+ * half of the current 4 KB block remains (0x2000 - 0x1900 < 2 KB).
+ */
 /* If BT is not built at all */
 MEMORY
 {
@@ -160,7 +167,6 @@ _heap_start = _heap_low_start;
 _sram1_iram_start = 0x400A0000;
 _sram1_iram_len = ( _iram_end > _sram1_iram_start) ? (_iram_end - _sram1_iram_start) : 0;
 _heap_end = ALIGN(0x40000000 - _sram1_iram_len - 3, 4);
-_data_seg_org = ORIGIN(rtc_data_seg);
 /* The lines below define location alias for .rtc.data section based on Kconfig option.
    When the option is not defined then use slow memory segment
    else the data will be placed in fast memory segment */
