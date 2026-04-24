@@ -1,0 +1,31 @@
+# ==========================================================================
+# Aura-Synth sdkconfig defaults
+# ==========================================================================
+
+# Partition table
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# CPU at max speed for audio processing headroom
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
+# Flash
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
+# --- PSRAM ---
+# Your ESP32-PICO-V3-02 has embedded PSRAM.
+# Delay buffers and loop recorder tapes go here.
+CONFIG_ESP32_SPIRAM_SUPPORT=y
+CONFIG_SPIRAM_USE_CAPS_ALLOC=y
+
+# FreeRTOS
+CONFIG_FREERTOS_HZ=1000
+
+# Watchdog — audio task runs a tight loop
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=10
+
+# Compiler optimization for performance
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+# Log level (INFO for dev, WARN for production)
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y

@@ -1,0 +1,9 @@
+-Wno-frame-address
+-mlongcalls
+-fno-builtin-memcpy
+-fno-builtin-memset
+-fno-builtin-bzero
+-mdisable-hardware-atomics
+-specs=picolibc.specs
+-mfix-esp32-psram-cache-issue
+-mfix-esp32-psram-cache-strategy=memw
