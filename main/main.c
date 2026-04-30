@@ -173,6 +173,8 @@ static void demo_mode_task(void *param)
 #define BTN_REC_PIN             GPIO_NUM_21  /* record / stop recording */
 #define BTN_CLEAR_PIN           GPIO_NUM_23  /* clear active track */
 #define BTN_PLAY_PAUSE_PIN      GPIO_NUM_27  /* play / pause */
+/* Prompt 3: single button cycles active track 0->1->2->3->0 */
+#define BTN_TRACK_CYCLE_PIN     GPIO_NUM_32
 
 /* Master FX controls (analog reads / encoder) */
 #define DIAL_VOLUME_ADC         ADC1_CHANNEL_0  /* placeholder */
@@ -209,7 +211,8 @@ static void integration_buttons_init(void)
         (1ULL << BTN_PAD_2_PIN) | (1ULL << BTN_PAD_3_PIN) |
         (1ULL << BTN_PAD_TOGGLE_PIN) |
         (1ULL << BTN_REC_PIN) | (1ULL << BTN_CLEAR_PIN) |
-        (1ULL << BTN_PLAY_PAUSE_PIN);
+        (1ULL << BTN_PLAY_PAUSE_PIN) |
+        (1ULL << BTN_TRACK_CYCLE_PIN);
     gpio_config(&io);
 }
 
@@ -226,7 +229,8 @@ static void integration_mode_task(void *param)
     bool prev_rec = true;
     bool prev_clear = true;
     bool prev_play = true;
-    int64_t last_edge_us[NUM_DRUM_PADS + 4] = {0}; /* pads + toggle + rec/clear/play */
+    bool prev_track = true;
+    int64_t last_edge_us[NUM_DRUM_PADS + 5] = {0}; /* pads + toggle + rec/clear/play/track */
 
     while (1) {
         int64_t now = (int64_t)xTaskGetTickCount() * portTICK_PERIOD_MS * 1000;
@@ -282,6 +286,21 @@ static void integration_mode_task(void *param)
             ESP_LOGI(TAG, "Transport: PLAY/PAUSE");
         }
         prev_play = play_now;
+
+        /* Prompt 3: cycle active track with one button */
+        bool track_now = gpio_get_level(BTN_TRACK_CYCLE_PIN) != 0;
+        if (!track_now && prev_track &&
+            (now - last_edge_us[NUM_DRUM_PADS + 4]) > BTN_DEBOUNCE_US) {
+            int next_track = 0;
+            if (shared_state_lock()) {
+                next_track = (g_state.active_track + 1) % NUM_TRACKS;
+                g_state.active_track = (uint8_t)next_track;
+                shared_state_unlock();
+            }
+            last_edge_us[NUM_DRUM_PADS + 4] = now;
+            ESP_LOGI(TAG, "Transport: TRACK -> %d", next_track);
+        }
+        prev_track = track_now;
 
         /* Read the four pad buttons */
         for (int i = 0; i < NUM_DRUM_PADS; i++) {
