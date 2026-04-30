@@ -169,6 +169,10 @@ static void demo_mode_task(void *param)
 #define BTN_PAD_2_PIN           GPIO_NUM_17  /* trump  / clap  */
 #define BTN_PAD_3_PIN           GPIO_NUM_18  /* 808    / snare */
 #define BTN_PAD_TOGGLE_PIN      GPIO_NUM_19  /* instr <-> drums */
+/* Prompt 2 transport buttons (active-low, pull-up enabled). */
+#define BTN_REC_PIN             GPIO_NUM_21  /* record / stop recording */
+#define BTN_CLEAR_PIN           GPIO_NUM_23  /* clear active track */
+#define BTN_PLAY_PAUSE_PIN      GPIO_NUM_27  /* play / pause */
 
 /* Master FX controls (analog reads / encoder) */
 #define DIAL_VOLUME_ADC         ADC1_CHANNEL_0  /* placeholder */
@@ -203,7 +207,9 @@ static void integration_buttons_init(void)
     io.pin_bit_mask =
         (1ULL << BTN_PAD_0_PIN) | (1ULL << BTN_PAD_1_PIN) |
         (1ULL << BTN_PAD_2_PIN) | (1ULL << BTN_PAD_3_PIN) |
-        (1ULL << BTN_PAD_TOGGLE_PIN);
+        (1ULL << BTN_PAD_TOGGLE_PIN) |
+        (1ULL << BTN_REC_PIN) | (1ULL << BTN_CLEAR_PIN) |
+        (1ULL << BTN_PLAY_PAUSE_PIN);
     gpio_config(&io);
 }
 
@@ -217,7 +223,10 @@ static void integration_mode_task(void *param)
 
     bool prev_pad[NUM_DRUM_PADS] = {true, true, true, true};
     bool prev_toggle = true;
-    int64_t last_edge_us[NUM_DRUM_PADS + 1] = {0};
+    bool prev_rec = true;
+    bool prev_clear = true;
+    bool prev_play = true;
+    int64_t last_edge_us[NUM_DRUM_PADS + 4] = {0}; /* pads + toggle + rec/clear/play */
 
     while (1) {
         int64_t now = (int64_t)xTaskGetTickCount() * portTICK_PERIOD_MS * 1000;
@@ -236,6 +245,43 @@ static void integration_mode_task(void *param)
                      g_state.pad_mode == PAD_DRUMS ? "DRUMS" : "INSTRUMENTS");
         }
         prev_toggle = toggle_now;
+
+        /* Transport buttons (Prompt 2) */
+        bool rec_now = gpio_get_level(BTN_REC_PIN) != 0;
+        if (!rec_now && prev_rec &&
+            (now - last_edge_us[NUM_DRUM_PADS + 1]) > BTN_DEBOUNCE_US) {
+            if (shared_state_lock()) {
+                g_state.record_pressed = true;
+                shared_state_unlock();
+            }
+            last_edge_us[NUM_DRUM_PADS + 1] = now;
+            ESP_LOGI(TAG, "Transport: REC toggle");
+        }
+        prev_rec = rec_now;
+
+        bool clr_now = gpio_get_level(BTN_CLEAR_PIN) != 0;
+        if (!clr_now && prev_clear &&
+            (now - last_edge_us[NUM_DRUM_PADS + 2]) > BTN_DEBOUNCE_US) {
+            if (shared_state_lock()) {
+                g_state.clear_pressed = true;
+                shared_state_unlock();
+            }
+            last_edge_us[NUM_DRUM_PADS + 2] = now;
+            ESP_LOGI(TAG, "Transport: CLEAR");
+        }
+        prev_clear = clr_now;
+
+        bool play_now = gpio_get_level(BTN_PLAY_PAUSE_PIN) != 0;
+        if (!play_now && prev_play &&
+            (now - last_edge_us[NUM_DRUM_PADS + 3]) > BTN_DEBOUNCE_US) {
+            if (shared_state_lock()) {
+                g_state.play_pause_pressed = true;
+                shared_state_unlock();
+            }
+            last_edge_us[NUM_DRUM_PADS + 3] = now;
+            ESP_LOGI(TAG, "Transport: PLAY/PAUSE");
+        }
+        prev_play = play_now;
 
         /* Read the four pad buttons */
         for (int i = 0; i < NUM_DRUM_PADS; i++) {

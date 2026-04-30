@@ -1,213 +1,233 @@
 /**
- * loop_recorder.c — Gesture tape recorder.
+ * loop_recorder.c — Gesture-event looper.
  *
- * State machine:
- *   IDLE → (record pressed) → RECORDING
- *   RECORDING → (record pressed) → PLAYING (loop length set)
- *   PLAYING → (record pressed on different track) → OVERDUBBING
- *   any state → (clear pressed) → clears active track tape
+ * Records note events (slot/velocity/speed/loop) with frame timestamps
+ * and replays them by posting the same events to g_note_queue.
  *
- * Each track's tape is an array of control_frame_t in PSRAM.
- * At 100 Hz control rate, MAX_LOOP_FRAMES=2000 gives 20 seconds of loop.
- * Memory: 4 tracks × 2000 frames × 8 bytes = 64 KB PSRAM.
+ * Frame clock is driven by loop_recorder_update() at control rate
+ * (~86-100 Hz depending on CONTROL_DIVIDER). All timing is quantized
+ * to that grid, which is fine for this class project and keeps the
+ * implementation deterministic and low overhead.
  */
 
 #include "loop_recorder.h"
+
 #include <string.h>
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 
 static const char *TAG = "loop_rec";
 
-/* ------------------------------------------------------------------ */
-/* State                                                               */
-/* ------------------------------------------------------------------ */
+/* Worst-case event budget per track. */
+#define MAX_EVENTS_PER_TRACK   4096
 
-typedef enum {
-    REC_IDLE,
-    REC_RECORDING,
-    REC_PLAYING,
-} rec_state_t;
+typedef struct {
+    uint16_t frame;     /* 0..MAX_LOOP_FRAMES-1 */
+    note_event_t evt;
+} rec_event_t;
 
-static rec_state_t    s_state = REC_IDLE;
-static control_frame_t *s_tapes[NUM_TRACKS];  /* PSRAM-allocated */
-static bool            s_tape_has_data[NUM_TRACKS];
-static int             s_loop_length = 0;     /* in frames */
-static int             s_playhead = 0;
-static int             s_rec_track = 0;       /* which track we're recording */
+static rec_event_t *s_tracks[NUM_TRACKS];
+static int          s_event_count[NUM_TRACKS];
 
-/* ------------------------------------------------------------------ */
-/* Init / deinit                                                       */
-/* ------------------------------------------------------------------ */
+static bool s_recording = false;
+static bool s_playing = false;
+static int  s_record_track = 0;
+static int  s_record_frame = 0;      /* used when loop length not yet fixed */
+
+static int  s_loop_length = 0;        /* frames; set by first completed take */
+static int  s_playhead = 0;           /* [0, s_loop_length) while playing */
+
+static bool all_tracks_empty(void)
+{
+    for (int t = 0; t < NUM_TRACKS; t++) {
+        if (s_event_count[t] > 0) return false;
+    }
+    return true;
+}
+
+static void clear_track_internal(int track)
+{
+    if (track < 0 || track >= NUM_TRACKS) return;
+    s_event_count[track] = 0;
+}
+
+static void start_recording(int track)
+{
+    if (track < 0 || track >= NUM_TRACKS) track = 0;
+    s_recording = true;
+    s_record_track = track;
+    clear_track_internal(track); /* overwrite policy */
+
+    if (s_loop_length == 0) {
+        s_record_frame = 0;
+        s_playhead = 0;
+    } else {
+        /* Record into existing timeline from current playhead. */
+        if (s_playhead >= s_loop_length) s_playhead = 0;
+    }
+
+    ESP_LOGI(TAG, "REC start track=%d loop_len=%d", s_record_track, s_loop_length);
+}
+
+static void stop_recording(void)
+{
+    if (!s_recording) return;
+    s_recording = false;
+
+    if (s_loop_length == 0) {
+        /* First take determines loop length. */
+        if (s_record_frame <= 0) {
+            s_loop_length = 0;
+            s_playing = false;
+            ESP_LOGI(TAG, "REC stop: empty take");
+            return;
+        }
+
+        s_loop_length = s_record_frame;
+        if (s_loop_length > MAX_LOOP_FRAMES) s_loop_length = MAX_LOOP_FRAMES;
+        s_playhead = 0;
+        s_playing = true;
+        ESP_LOGI(TAG, "REC stop: first loop set (%d frames, %.2fs @100Hz)",
+                 s_loop_length, s_loop_length / 100.0f);
+    } else {
+        /* Existing loop stays fixed-length. */
+        s_playing = true;
+        ESP_LOGI(TAG, "REC stop: overdub track=%d (loop %d frames)",
+                 s_record_track, s_loop_length);
+    }
+}
 
 bool loop_recorder_init(void)
 {
-    memset(s_tapes, 0, sizeof(s_tapes));
-    memset(s_tape_has_data, 0, sizeof(s_tape_has_data));
-    s_state = REC_IDLE;
+    memset(s_tracks, 0, sizeof(s_tracks));
+    memset(s_event_count, 0, sizeof(s_event_count));
+
+    s_recording = false;
+    s_playing = false;
+    s_record_track = 0;
+    s_record_frame = 0;
     s_loop_length = 0;
     s_playhead = 0;
 
-    for (int i = 0; i < NUM_TRACKS; i++) {
-        s_tapes[i] = (control_frame_t *)heap_caps_calloc(
-            MAX_LOOP_FRAMES, sizeof(control_frame_t), MALLOC_CAP_SPIRAM);
-
-        if (s_tapes[i] == NULL) {
-            ESP_LOGE(TAG, "Failed to allocate tape %d in PSRAM", i);
+    for (int t = 0; t < NUM_TRACKS; t++) {
+        s_tracks[t] = (rec_event_t *)heap_caps_calloc(
+            MAX_EVENTS_PER_TRACK, sizeof(rec_event_t), MALLOC_CAP_SPIRAM);
+        if (s_tracks[t] == NULL) {
+            ESP_LOGE(TAG, "Failed to allocate tape for track %d", t);
             loop_recorder_deinit();
             return false;
         }
     }
 
-    size_t total = NUM_TRACKS * MAX_LOOP_FRAMES * sizeof(control_frame_t);
-    ESP_LOGI(TAG, "Loop recorder initialized: %d tracks × %d frames = %u KB PSRAM",
-             NUM_TRACKS, MAX_LOOP_FRAMES, (unsigned)(total / 1024));
+    size_t total = NUM_TRACKS * MAX_EVENTS_PER_TRACK * sizeof(rec_event_t);
+    ESP_LOGI(TAG, "Init: %d tracks × %d events = %u KB PSRAM",
+             NUM_TRACKS, MAX_EVENTS_PER_TRACK, (unsigned)(total / 1024));
     return true;
 }
 
 void loop_recorder_deinit(void)
 {
-    for (int i = 0; i < NUM_TRACKS; i++) {
-        if (s_tapes[i]) {
-            free(s_tapes[i]);
-            s_tapes[i] = NULL;
+    for (int t = 0; t < NUM_TRACKS; t++) {
+        if (s_tracks[t]) {
+            free(s_tracks[t]);
+            s_tracks[t] = NULL;
         }
+        s_event_count[t] = 0;
     }
-    s_state = REC_IDLE;
+    s_recording = false;
+    s_playing = false;
+    s_loop_length = 0;
+    s_playhead = 0;
 }
 
-/* ------------------------------------------------------------------ */
-/* Helpers                                                             */
-/* ------------------------------------------------------------------ */
-
-/** Capture the current track params into a compact control frame. */
-static control_frame_t capture_frame(const shared_state_t *snap)
+void loop_recorder_on_live_event(const note_event_t *evt)
 {
-    const track_params_t *tp = &snap->tracks[snap->active_track];
-    control_frame_t f;
-    f.pitch         = tp->pitch;
-    f.volume        = (uint8_t)(tp->volume * 255.0f);
-    f.lfo_rate      = (uint8_t)((tp->lfo_rate / 20.0f) * 255.0f);
-    f.waveform_mix  = (uint8_t)(tp->waveform_mix * 255.0f);
-    f.detune        = (uint8_t)((tp->detune / 10.0f) * 255.0f);
-    f.filter_cutoff = (uint8_t)(((tp->filter_cutoff - 100.0f) / 1900.0f) * 255.0f);
-    f.pitch_bend    = (uint8_t)((tp->pitch_bend + 1.0f) * 127.5f);
-    f.drum_trigger_flags = 0;  /* drums recorded separately if needed */
-    return f;
-}
+    if (!s_recording || evt == NULL) return;
 
-/** Apply a recorded control frame back to a track's params. */
-static void apply_frame(const control_frame_t *f, track_params_t *tp)
-{
-    tp->pitch         = f->pitch;
-    tp->volume        = f->volume / 255.0f;
-    tp->lfo_rate      = (f->lfo_rate / 255.0f) * 20.0f;
-    tp->waveform_mix  = f->waveform_mix / 255.0f;
-    tp->detune        = (f->detune / 255.0f) * 10.0f;
-    tp->filter_cutoff = 100.0f + (f->filter_cutoff / 255.0f) * 1900.0f;
-    tp->pitch_bend    = (f->pitch_bend / 127.5f) - 1.0f;
-}
+    /* Never re-record playback-originated events. */
+    if (evt->source == 20) return;
 
-/* ------------------------------------------------------------------ */
-/* Update (called each control cycle)                                  */
-/* ------------------------------------------------------------------ */
+    if (s_record_track < 0 || s_record_track >= NUM_TRACKS) return;
+    if (s_tracks[s_record_track] == NULL) return;
+
+    int count = s_event_count[s_record_track];
+    if (count >= MAX_EVENTS_PER_TRACK) return; /* drop if full */
+
+    int frame = (s_loop_length > 0) ? s_playhead : s_record_frame;
+    if (frame < 0) frame = 0;
+    if (frame >= MAX_LOOP_FRAMES) frame = MAX_LOOP_FRAMES - 1;
+
+    s_tracks[s_record_track][count].frame = (uint16_t)frame;
+    s_tracks[s_record_track][count].evt = *evt;
+    s_event_count[s_record_track] = count + 1;
+}
 
 void loop_recorder_update(shared_state_t *snap)
 {
-    /* --- Handle CLEAR --- */
+    if (snap == NULL) return;
+
+    /* CLEAR active track */
     if (snap->clear_pressed) {
         loop_recorder_clear_track(snap->active_track);
-        ESP_LOGI(TAG, "Cleared track %d", snap->active_track);
+        ESP_LOGI(TAG, "Track %d cleared", snap->active_track);
+    }
 
-        /* If no tracks have data, reset to idle */
-        if (!loop_recorder_has_data()) {
-            s_state = REC_IDLE;
-            s_loop_length = 0;
-            s_playhead = 0;
+    /* PLAY / PAUSE */
+    if (snap->play_pause_pressed) {
+        if (s_loop_length > 0 && loop_recorder_has_data()) {
+            s_playing = !s_playing;
+            ESP_LOGI(TAG, "Playback %s", s_playing ? "ON" : "PAUSE");
         }
     }
 
-    /* --- Handle RECORD toggle --- */
+    /* RECORD toggle */
     if (snap->record_pressed) {
-        switch (s_state) {
-            case REC_IDLE:
-                /* Start recording on active track */
-                s_rec_track = snap->active_track;
-                s_playhead = 0;
-                s_loop_length = 0;
-                s_state = REC_RECORDING;
-                ESP_LOGI(TAG, "Recording started on track %d", s_rec_track);
-                break;
-
-            case REC_RECORDING:
-                /* Stop recording, set loop length, start playback */
-                if (s_playhead > 0) {
-                    s_loop_length = s_playhead;
-                    s_tape_has_data[s_rec_track] = true;
-                    s_playhead = 0;
-                    s_state = REC_PLAYING;
-                    ESP_LOGI(TAG, "Recording stopped: %d frames (%.1fs). Playing.",
-                             s_loop_length, s_loop_length / 100.0f);
-                } else {
-                    /* Nothing recorded, go back to idle */
-                    s_state = REC_IDLE;
-                }
-                break;
-
-            case REC_PLAYING:
-                /* Start overdubbing on the current active track */
-                s_rec_track = snap->active_track;
-                s_state = REC_RECORDING;
-                ESP_LOGI(TAG, "Overdub started on track %d", s_rec_track);
-                break;
-        }
-    }
-
-    /* --- Record current frame --- */
-    if (s_state == REC_RECORDING) {
-        if (s_playhead < MAX_LOOP_FRAMES) {
-            s_tapes[s_rec_track][s_playhead] = capture_frame(snap);
-            s_playhead++;
+        if (!s_recording) {
+            start_recording(snap->active_track);
         } else {
-            /* Hit max length — auto-stop */
-            s_loop_length = MAX_LOOP_FRAMES;
-            s_tape_has_data[s_rec_track] = true;
-            s_playhead = 0;
-            s_state = REC_PLAYING;
-            ESP_LOGW(TAG, "Max loop length reached, auto-stopped");
+            stop_recording();
         }
     }
 
-    /* --- Playback recorded frames --- */
-    if (s_state == REC_PLAYING || (s_state == REC_RECORDING && s_loop_length > 0)) {
+    /* Playback emit at current playhead before advancing it. */
+    if (s_playing && s_loop_length > 0) {
         for (int t = 0; t < NUM_TRACKS; t++) {
-            /* Don't play back the track currently being recorded */
-            if (s_state == REC_RECORDING && t == s_rec_track) continue;
+            rec_event_t *tape = s_tracks[t];
+            int count = s_event_count[t];
+            if (tape == NULL || count <= 0) continue;
 
-            if (s_tape_has_data[t] && s_playhead < s_loop_length) {
-                apply_frame(&s_tapes[t][s_playhead], &snap->tracks[t]);
+            for (int i = 0; i < count; i++) {
+                if ((int)tape[i].frame == s_playhead) {
+                    note_event_t e = tape[i].evt;
+                    e.source = 20; /* loop playback provenance */
+                    note_event_post(e.slot, e.velocity, e.speed, e.loop, e.source);
+                }
             }
         }
     }
 
-    /* --- Advance playhead --- */
-    if (s_state == REC_PLAYING) {
-        s_playhead++;
-        if (s_playhead >= s_loop_length) {
-            s_playhead = 0;  /* loop back */
+    /* Advance clocks */
+    if (s_recording) {
+        if (s_loop_length == 0) {
+            s_record_frame++;
+            if (s_record_frame >= MAX_LOOP_FRAMES) {
+                /* Auto-stop at max length, sets first loop length. */
+                stop_recording();
+            }
         }
     }
 
-    /* --- Write transport state back to shared state --- */
-    snap->is_recording = (s_state == REC_RECORDING);
-    snap->is_playing   = (s_state == REC_PLAYING);
-    snap->loop_length  = s_loop_length;
-    snap->playhead     = s_playhead;
-}
+    if (s_playing && s_loop_length > 0) {
+        s_playhead++;
+        if (s_playhead >= s_loop_length) s_playhead = 0;
+    }
 
-/* ------------------------------------------------------------------ */
-/* Queries                                                             */
-/* ------------------------------------------------------------------ */
+    /* Publish transport state */
+    snap->is_recording = s_recording;
+    snap->is_playing = s_playing;
+    snap->loop_length = s_loop_length;
+    snap->playhead = s_playhead;
+}
 
 int loop_recorder_get_length(void)
 {
@@ -216,27 +236,34 @@ int loop_recorder_get_length(void)
 
 bool loop_recorder_has_data(void)
 {
-    for (int i = 0; i < NUM_TRACKS; i++) {
-        if (s_tape_has_data[i]) return true;
-    }
-    return false;
+    return !all_tracks_empty();
 }
 
 void loop_recorder_clear_track(int track)
 {
     if (track < 0 || track >= NUM_TRACKS) return;
-    if (s_tapes[track]) {
-        memset(s_tapes[track], 0, MAX_LOOP_FRAMES * sizeof(control_frame_t));
+    clear_track_internal(track);
+
+    if (all_tracks_empty()) {
+        s_recording = false;
+        s_playing = false;
+        s_record_track = 0;
+        s_record_frame = 0;
+        s_loop_length = 0;
+        s_playhead = 0;
+        ESP_LOGI(TAG, "All tracks empty -> loop length reset");
     }
-    s_tape_has_data[track] = false;
 }
 
 void loop_recorder_clear_all(void)
 {
-    for (int i = 0; i < NUM_TRACKS; i++) {
-        loop_recorder_clear_track(i);
+    for (int t = 0; t < NUM_TRACKS; t++) {
+        clear_track_internal(t);
     }
-    s_state = REC_IDLE;
+    s_recording = false;
+    s_playing = false;
+    s_record_track = 0;
+    s_record_frame = 0;
     s_loop_length = 0;
     s_playhead = 0;
 }

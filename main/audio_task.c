@@ -57,6 +57,8 @@ void audio_task_run(void *param)
             int drained = 0;
             while (drained < NOTE_QUEUE_DEPTH &&
                    xQueueReceive(g_note_queue, &evt, 0) == pdTRUE) {
+                /* Recorder captures only live user events (not loop playback). */
+                loop_recorder_on_live_event(&evt);
                 sampler_trigger(evt.slot, evt.velocity, evt.speed, evt.loop);
                 drained++;
             }

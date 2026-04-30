@@ -178,6 +178,7 @@ typedef struct {
     /* --- Loop recorder transport --- */
     bool     record_pressed;     /* edge-detected by Core 0, consumed once */
     bool     clear_pressed;      /* edge-detected by Core 0, consumed once */
+    bool     play_pause_pressed; /* edge-detected by Core 0, consumed once */
     bool     is_recording;       /* current state (managed by loop_recorder) */
     bool     is_playing;         /* current state (managed by loop_recorder) */
     int      loop_length;        /* 0 = no loop set yet */
@@ -253,6 +254,7 @@ static inline void shared_state_snapshot(shared_state_t *out) {
         g_state.drum.trigger = false;
         g_state.record_pressed = false;
         g_state.clear_pressed = false;
+        g_state.play_pause_pressed = false;
         shared_state_unlock();
     }
 }
