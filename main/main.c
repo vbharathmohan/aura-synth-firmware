@@ -419,22 +419,28 @@ void app_main(void)
     }
     ESP_LOGI(TAG, "[6/8] Loop recorder OK");
 
-    /* 7. Sensors. Done last so all upstream consumers (queue, sampler,
-     * mixer) are ready when the first reading lands. */
-    if (!sensor_task_init()) {
-        ESP_LOGW(TAG, "[7/8] Sensors NOT ready — silent gesture input");
+    /* 7. LED hardware (needed before sensor init so ready status can
+     * illuminate per-sensor chunks during startup). */
+    if (!led_task_init()) {
+        ESP_LOGW(TAG, "[7/8] LEDs NOT ready");
     } else {
-        sensor_task_start();
-        ESP_LOGI(TAG, "[7/8] Sensors OK");
+        led_task_boot_clear();
+        ESP_LOGI(TAG, "[7/8] LEDs OK");
     }
 
-    /* 8. LED feedback + metronome (WS2812 strip on GPIO 5). */
-    if (!led_task_init()) {
-        ESP_LOGW(TAG, "[8/8] LEDs NOT ready");
+    /* 8. Sensors. During init each "ToF ready" log lights one LED chunk.
+     * After all sensors are processed: full-strip white flash then clear. */
+    if (!sensor_task_init()) {
+        ESP_LOGW(TAG, "[8/8] Sensors NOT ready — silent gesture input");
     } else {
-        led_task_start();
-        ESP_LOGI(TAG, "[8/8] LEDs OK");
+        led_task_boot_flash_white(120, 250);
+        led_task_boot_clear();
+        sensor_task_start();
+        ESP_LOGI(TAG, "[8/8] Sensors OK");
     }
+
+    /* Start normal LED rendering once boot animation is complete. */
+    led_task_start();
 
     /* Audio pipeline on Core 1 — highest priority */
     xTaskCreatePinnedToCore(audio_task_run, "audio", 8192, NULL,

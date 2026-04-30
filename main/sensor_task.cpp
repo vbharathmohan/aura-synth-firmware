@@ -32,6 +32,7 @@
 
 #include "sensor_task.h"
 #include "shared_state.h"
+#include "led_task.h"
 
 #include <math.h>
 #include <string.h>
@@ -81,6 +82,14 @@ static const char *TAG = "sensor_task";
 #define DIST_TRIGGER_MM     220      /* crossing below this fires a note */
 #define DIST_RANGE_MAX      1000     /* anything farther = "no hand" */
 
+/* Lateral swipe (gliss) detection:
+ * Treat neighboring sensor crossings as horizontal travel and estimate
+ * lateral speed from sensor index delta over time. */
+#define SENSOR_PITCH_MM             114.0f   /* effective center-to-center spacing */
+#define GLISS_MIN_LATERAL_MMPS      400.0f  /* minimum swipe speed for gliss */
+#define GLISS_MIN_SENSORS           3       /* must cross at least this many ToFs */
+#define GLISS_RUN_TIMEOUT_US        180000  /* reset run if crossings too sparse */
+
 /* Velocity → MIDI velocity (sample volume) mapping.
  * Approach speed in mm/sec:
  *   100  mm/s  -> roughly noise floor, ignored
@@ -94,6 +103,8 @@ static const char *TAG = "sensor_task";
  * sensor for this long. Prevents the swipe's settling motion from
  * producing several notes. */
 #define RETRIGGER_LOCKOUT_US    120000   /* 120 ms */
+#define AUTO_REARM_US           RETRIGGER_LOCKOUT_US
+#define READING_STALE_US        100000   /* >100 ms gap = previous state stale */
 
 /* ------------------------------------------------------------------ */
 /* Per-sensor state                                                    */
@@ -133,6 +144,21 @@ static std::atomic<int64_t>  s_last_update_us[NUM_TOF_SENSORS];
 
 static bool s_initialised = false;
 static TaskHandle_t s_task_handle = nullptr;
+
+struct gliss_state_t {
+    int     last_idx;
+    int64_t last_cross_us;
+    int8_t  dir;               /* -1 left, +1 right, 0 unknown */
+    int     sensors_in_run;    /* count of sensors crossed in current run */
+    bool    active;            /* run has met speed + length threshold */
+};
+static gliss_state_t s_gliss = {
+    .last_idx = -1,
+    .last_cross_us = 0,
+    .dir = 0,
+    .sensors_in_run = 0,
+    .active = false,
+};
 
 /* ------------------------------------------------------------------ */
 /* 74HC595 shift register                                              */
@@ -187,6 +213,58 @@ static inline uint8_t velocity_from_speed(float speed_mmps)
     return (uint8_t)v;
 }
 
+static inline uint8_t gliss_velocity_floor(void)
+{
+    return 42;
+}
+
+static bool update_gliss_state_on_crossing(int idx, int64_t now_us)
+{
+    /* New run if first crossing or timeout. */
+    if (s_gliss.last_idx < 0 ||
+        (now_us - s_gliss.last_cross_us) > GLISS_RUN_TIMEOUT_US) {
+        s_gliss.last_idx = idx;
+        s_gliss.last_cross_us = now_us;
+        s_gliss.dir = 0;
+        s_gliss.sensors_in_run = 1;
+        s_gliss.active = false;
+        return false;
+    }
+
+    int d_idx = idx - s_gliss.last_idx;
+    if (d_idx == 0) {
+        s_gliss.last_cross_us = now_us;
+        return s_gliss.active;
+    }
+
+    int step = (d_idx > 0) ? d_idx : -d_idx;
+    int8_t dir = (d_idx > 0) ? 1 : -1;
+    float dt_s = (now_us - s_gliss.last_cross_us) / 1.0e6f;
+    if (dt_s < 0.001f) dt_s = 0.001f;
+    float lateral_mmps = (step * SENSOR_PITCH_MM) / dt_s;
+
+    bool contiguous = (step == 1);
+    bool same_dir = (s_gliss.dir == 0 || dir == s_gliss.dir);
+    bool fast_enough = (lateral_mmps >= GLISS_MIN_LATERAL_MMPS);
+
+    if (contiguous && same_dir && fast_enough) {
+        s_gliss.sensors_in_run++;
+        s_gliss.dir = dir;
+        if (s_gliss.sensors_in_run >= GLISS_MIN_SENSORS) {
+            s_gliss.active = true;
+        }
+    } else {
+        /* Restart run at this sensor crossing. */
+        s_gliss.sensors_in_run = 1;
+        s_gliss.dir = 0;
+        s_gliss.active = false;
+    }
+
+    s_gliss.last_idx = idx;
+    s_gliss.last_cross_us = now_us;
+    return s_gliss.active;
+}
+
 /** Update per-sensor state with one new reading and (maybe) post a
  *  note event. Returns true if a note was triggered. */
 static bool process_reading(int idx, uint16_t distance_mm, int64_t now_us)
@@ -205,27 +283,66 @@ static bool process_reading(int idx, uint16_t distance_mm, int64_t now_us)
     /* Compute instantaneous approach speed */
     float dt_s = (now_us - st.prev_time_us) / 1.0e6f;
     if (dt_s < 0.001f) dt_s = 0.001f;
-    float inst_speed = (float)((int)st.prev_dist_mm - (int)distance_mm) / dt_s;
 
-    /* Light EMA so a single noisy frame doesn't blow the trigger */
-    st.smoothed_speed_mmps =
-        0.55f * st.smoothed_speed_mmps + 0.45f * inst_speed;
+    /* If we haven't seen a valid reading on this sensor for a while, the
+     * sensor's "previous distance" is effectively meaningless: the hand
+     * left, the VL53L0X reported RangeStatus != 0 for far/no-object, and
+     * we never updated state. Treat the previous state as "no hand" so
+     * the next approach produces a clean crossing edge. Zero the speed
+     * estimate so this stale-recovery reading can't spoof a high-velocity
+     * strike. */
+    bool stale = (now_us - st.prev_time_us) > READING_STALE_US;
+    if (stale) {
+        st.prev_dist_mm = DIST_RANGE_MAX;
+        st.smoothed_speed_mmps = 0.0f;
+    } else {
+        float inst_speed =
+            (float)((int)st.prev_dist_mm - (int)distance_mm) / dt_s;
+        /* Light EMA so a single noisy frame doesn't blow the trigger */
+        st.smoothed_speed_mmps =
+            0.55f * st.smoothed_speed_mmps + 0.45f * inst_speed;
+    }
 
-    /* Re-arm when the hand pulls away */
+    /* Re-arm when the hand pulls away (strike behavior). */
     if (distance_mm >= DIST_ARM_MM) {
+        st.armed = true;
+    }
+    /* Also auto re-arm after lockout so repeated swipes don't require
+     * a large hand lift between passes. */
+    if (!st.armed && (now_us - st.last_trigger_us) > AUTO_REARM_US) {
         st.armed = true;
     }
 
     bool fired = false;
 
-    /* Edge: crossing below TRIGGER threshold while armed */
-    if (st.armed &&
-        st.prev_dist_mm > DIST_TRIGGER_MM &&
-        distance_mm    <= DIST_TRIGGER_MM &&
-        st.smoothed_speed_mmps > MIN_SWIPE_SPEED_MMPS &&
+    /* A sensor "crossing" event is the hand entering this sensor's
+     * strike zone. We use this to track lateral gliss speed. */
+    bool crossing =
+        (st.prev_dist_mm > DIST_TRIGGER_MM) &&
+        (distance_mm <= DIST_TRIGGER_MM);
+
+    bool gliss_active_now = false;
+    if (crossing) {
+        gliss_active_now = update_gliss_state_on_crossing(idx, now_us);
+    }
+
+    /* Two trigger paths:
+     *  1) strike trigger: threshold crossing + enough approach speed + armed.
+     *  2) gliss trigger: crossing while a high-speed 3+ sensor swipe is active.
+     *     (No re-arm requirement.) */
+    bool strike_crossing =
+        crossing &&
+        (st.smoothed_speed_mmps > MIN_SWIPE_SPEED_MMPS);
+
+    bool gliss_crossing = crossing && gliss_active_now;
+
+    if ((((st.armed && strike_crossing) || gliss_crossing)) &&
         (now_us - st.last_trigger_us) > RETRIGGER_LOCKOUT_US) {
 
         uint8_t velocity = velocity_from_speed(st.smoothed_speed_mmps);
+        if (velocity == 0 && gliss_crossing) {
+            velocity = gliss_velocity_floor();
+        }
         if (velocity > 0) {
             /* Lock-free read of currently active instrument. We don't
              * take g_state_mutex here — `active_instrument` is a single
@@ -340,6 +457,7 @@ bool sensor_task_init(void)
             ESP_LOGE(TAG, "ToF %d failed to init", i);
             delete s_sensors[i];
             s_sensors[i] = nullptr;
+            led_task_boot_set_sensor_ready(i, false);
             continue;
         }
 
@@ -353,6 +471,7 @@ bool sensor_task_init(void)
 
         ESP_LOGI(TAG, "ToF %d ready @ 0x%02X (scale step %.3f)",
                  i, SENSOR_ADDRS[i], SCALE_SPEED[i]);
+        led_task_boot_set_sensor_ready(i, true);
         initialised++;
     }
 

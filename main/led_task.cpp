@@ -110,6 +110,21 @@ static void hsv_to_rgb(float h, uint8_t s, uint8_t v,
     }
 }
 
+static inline bool led_ready(void)
+{
+    return s_initialised && (s_strip != nullptr);
+}
+
+static void set_bin_rgb(int bin, uint8_t r, uint8_t g, uint8_t b)
+{
+    if (!led_ready()) return;
+    if (bin < 0 || bin >= NUM_TOF_SENSORS) return;
+    int start = bin * LEDS_PER_BIN;
+    for (int j = 0; j < LEDS_PER_BIN; j++) {
+        led_strip_set_pixel(s_strip, start + j, r, g, b);
+    }
+}
+
 /* ------------------------------------------------------------------ */
 /* Render task                                                         */
 /* ------------------------------------------------------------------ */
@@ -265,3 +280,36 @@ void led_task_set_bpm(int bpm)
     if (bpm > 300) bpm = 300;
     s_metro_bpm.store(bpm);
 }
+
+void led_task_boot_clear(void)
+{
+    if (!led_ready()) return;
+    for (int i = 0; i < LED_STRIP_COUNT; i++) {
+        led_strip_set_pixel(s_strip, i, 0, 0, 0);
+    }
+    led_strip_refresh(s_strip);
+}
+
+void led_task_boot_set_sensor_ready(int sensor_idx, bool ready)
+{
+    if (!led_ready()) return;
+    if (ready) {
+        uint8_t r, g, b;
+        hsv_to_rgb(BIN_HUES[sensor_idx], 255, BIN_PEAK_VALUE, &r, &g, &b);
+        set_bin_rgb(sensor_idx, r, g, b);
+    } else {
+        set_bin_rgb(sensor_idx, 0, 0, 0);
+    }
+    led_strip_refresh(s_strip);
+}
+
+void led_task_boot_flash_white(uint8_t level, int duration_ms)
+{
+    if (!led_ready()) return;
+    for (int i = 0; i < LED_STRIP_COUNT; i++) {
+        led_strip_set_pixel(s_strip, i, level, level, level);
+    }
+    led_strip_refresh(s_strip);
+    if (duration_ms > 0) vTaskDelay(pdMS_TO_TICKS(duration_ms));
+}
+

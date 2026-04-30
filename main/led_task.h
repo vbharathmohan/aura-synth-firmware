@@ -69,6 +69,21 @@ void led_task_start(void);
  *  the metronome (LEDs in the spare row stay dark). */
 void led_task_set_bpm(int bpm);
 
+/* ------------------------------------------------------------------ */
+/* Boot-time status rendering (call before led_task_start)             */
+/* ------------------------------------------------------------------ */
+
+/** Clear strip immediately (all LEDs off). */
+void led_task_boot_clear(void);
+
+/** Light one ToF bin as ready/not-ready during startup.
+ *  ready=true  -> green chunk
+ *  ready=false -> red chunk */
+void led_task_boot_set_sensor_ready(int sensor_idx, bool ready);
+
+/** Flash entire strip white, then return to previous state. */
+void led_task_boot_flash_white(uint8_t level, int duration_ms);
+
 #ifdef __cplusplus
 }
 #endif
