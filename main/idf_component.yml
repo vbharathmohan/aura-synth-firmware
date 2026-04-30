@@ -1,0 +1,9 @@
+## IDF Component Manager dependencies for the `main` component.
+##
+## Pulls the WS2812 driver Lennart's prototype proves on this hardware
+## (espressif/led_strip). The component manager downloads it into
+## `managed_components/espressif__led_strip/` on first build.
+
+dependencies:
+  idf: ">=5.0.0"
+  espressif/led_strip: "^2.4.1"

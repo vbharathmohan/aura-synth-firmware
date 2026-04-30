@@ -77,9 +77,9 @@ static const char *TAG = "sensor_task";
 
 /* Distance gates (mm). Tuned for a hand swiping a few cm above the
  * sensor face. */
-#define DIST_ARM_MM         350      /* hand must rise above this to re-arm */
-#define DIST_TRIGGER_MM     200      /* crossing below this fires a note */
-#define DIST_RANGE_MAX      1200     /* anything farther = "no hand" */
+#define DIST_ARM_MM         320      /* hand must rise above this to re-arm */
+#define DIST_TRIGGER_MM     220      /* crossing below this fires a note */
+#define DIST_RANGE_MAX      1000     /* anything farther = "no hand" */
 
 /* Velocity → MIDI velocity (sample volume) mapping.
  * Approach speed in mm/sec:
@@ -88,7 +88,7 @@ static const char *TAG = "sensor_task";
  *   1500 mm/s  -> fortissimo (255)
  * Anything above that clips to 255. */
 #define MIN_SWIPE_SPEED_MMPS    150.0f
-#define MAX_SWIPE_SPEED_MMPS    1500.0f
+#define MAX_SWIPE_SPEED_MMPS    1250.0f
 
 /* After triggering a note, ignore further triggers from the same
  * sensor for this long. Prevents the swipe's settling motion from
@@ -129,6 +129,7 @@ struct swipe_state_t {
 static VL53L0X       *s_sensors[NUM_TOF_SENSORS]  = {nullptr};
 static swipe_state_t  s_swipe[NUM_TOF_SENSORS]    = {};
 static std::atomic<uint16_t> s_last_dist_mm[NUM_TOF_SENSORS];
+static std::atomic<int64_t>  s_last_update_us[NUM_TOF_SENSORS];
 
 static bool s_initialised = false;
 static TaskHandle_t s_task_handle = nullptr;
@@ -278,6 +279,7 @@ static void sensor_polling_task(void *)
                 && data.RangeStatus == 0) {
                 uint16_t mm = data.RangeMilliMeter;
                 s_last_dist_mm[i].store(mm);
+                s_last_update_us[i].store(now_us);
                 process_reading(i, mm, now_us);
             }
 
@@ -307,6 +309,7 @@ bool sensor_task_init(void)
         s_swipe[i].armed               = true;
         s_swipe[i].last_trigger_us     = 0;
         s_last_dist_mm[i].store(0);
+        s_last_update_us[i].store(0);
     }
 
     /* 74HC595 setup, all XSHUT lines low (sensors held in reset). */
@@ -382,4 +385,16 @@ uint16_t sensor_task_last_distance(int idx)
 {
     if (idx < 0 || idx >= NUM_TOF_SENSORS) return 0;
     return s_last_dist_mm[idx].load();
+}
+
+int32_t sensor_task_last_age_ms(int idx)
+{
+    if (idx < 0 || idx >= NUM_TOF_SENSORS) return INT32_MAX;
+    int64_t last = s_last_update_us[idx].load();
+    if (last <= 0) return INT32_MAX;
+
+    int64_t age_ms = (esp_timer_get_time() - last) / 1000;
+    if (age_ms < 0) age_ms = 0;
+    if (age_ms > INT32_MAX) age_ms = INT32_MAX;
+    return (int32_t)age_ms;
 }

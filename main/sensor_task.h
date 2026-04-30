@@ -48,6 +48,11 @@ void sensor_task_start(void);
  *  Useful for diagnostics / future LED feedback. */
 uint16_t sensor_task_last_distance(int idx);
 
+/** Age (ms) of the most recent successful measurement for sensor `idx`.
+ *  Large values mean stale data (e.g. no hand present / timeout / sensor
+ *  not ready yet). Returns INT32_MAX on invalid index. */
+int32_t sensor_task_last_age_ms(int idx);
+
 #ifdef __cplusplus
 }
 #endif

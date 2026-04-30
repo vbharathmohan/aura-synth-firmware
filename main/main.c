@@ -56,6 +56,7 @@
 #include "audio_task.h"
 #include "effects.h"
 #include "sensor_task.h"
+#include "led_task.h"
 
 static const char *TAG = "aura_synth";
 
@@ -326,40 +327,48 @@ void app_main(void)
 
     /* 1. Shared state (creates the mutex AND the note-event queue) */
     shared_state_init();
-    ESP_LOGI(TAG, "[1/7] Shared state OK");
+    ESP_LOGI(TAG, "[1/8] Shared state OK");
 
     /* 2. Block pool */
     if (!audio_pool_init()) { ESP_LOGE(TAG, "Block pool failed"); return; }
-    ESP_LOGI(TAG, "[2/7] Block pool OK");
+    ESP_LOGI(TAG, "[2/8] Block pool OK");
 
     /* 3. I2S */
     if (!i2s_output_init()) { ESP_LOGE(TAG, "I2S failed"); return; }
-    ESP_LOGI(TAG, "[3/7] I2S OK");
+    ESP_LOGI(TAG, "[3/8] I2S OK");
 
     /* 4. Sampler + WAVs */
     sampler_init();
     register_all_samples();
-    ESP_LOGI(TAG, "[4/7] Sampler OK");
+    ESP_LOGI(TAG, "[4/8] Sampler OK");
 
     /* 5. Mixer + master FX */
     mixer_init((float)SAMPLE_RATE);
     master_fx_init();
-    ESP_LOGI(TAG, "[5/7] Mixer OK (master FX wired%s)",
+    ESP_LOGI(TAG, "[5/8] Mixer OK (master FX wired%s)",
              s_master_delay_ready ? ", delay armed" : "");
 
     /* 6. Loop recorder (PSRAM-only). Future feature; safe to init now. */
     if (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) > 0) {
         loop_recorder_init();
     }
-    ESP_LOGI(TAG, "[6/7] Loop recorder OK");
+    ESP_LOGI(TAG, "[6/8] Loop recorder OK");
 
     /* 7. Sensors. Done last so all upstream consumers (queue, sampler,
      * mixer) are ready when the first reading lands. */
     if (!sensor_task_init()) {
-        ESP_LOGW(TAG, "[7/7] Sensors NOT ready — silent gesture input");
+        ESP_LOGW(TAG, "[7/8] Sensors NOT ready — silent gesture input");
     } else {
         sensor_task_start();
-        ESP_LOGI(TAG, "[7/7] Sensors OK");
+        ESP_LOGI(TAG, "[7/8] Sensors OK");
+    }
+
+    /* 8. LED feedback + metronome (WS2812 strip on GPIO 5). */
+    if (!led_task_init()) {
+        ESP_LOGW(TAG, "[8/8] LEDs NOT ready");
+    } else {
+        led_task_start();
+        ESP_LOGI(TAG, "[8/8] LEDs OK");
     }
 
     /* Audio pipeline on Core 1 — highest priority */

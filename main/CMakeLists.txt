@@ -20,8 +20,8 @@ idf_component_register(
 
         # --- Hardware ---
         "sensor_task.cpp"
+        "led_task.cpp"
         # "controls.c"
-        # "leds.c"
         # "lcd_comm.c"
 
     INCLUDE_DIRS
@@ -31,6 +31,7 @@ idf_component_register(
         esp_driver_i2s
         esp_driver_i2c
         esp_driver_gpio
+        led_strip
         esp_timer
         esp_common
         vl53l0x
