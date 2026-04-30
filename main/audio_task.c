@@ -47,7 +47,22 @@ void audio_task_run(void *param)
         /* 1. Snapshot shared state (consumes one-shot triggers) */
         shared_state_snapshot(&snap);
 
-        /* 2. Run loop recorder at control rate */
+        /* 2. Drain the note-event queue. Producers are sensor_task,
+         * the integration-mode button task, and (later) the loop
+         * recorder.  Each event becomes a sampler_trigger() call.
+         * We bound the work per cycle so an over-eager producer
+         * can't starve the audio loop. */
+        if (g_note_queue != NULL) {
+            note_event_t evt;
+            int drained = 0;
+            while (drained < NOTE_QUEUE_DEPTH &&
+                   xQueueReceive(g_note_queue, &evt, 0) == pdTRUE) {
+                sampler_trigger(evt.slot, evt.velocity, evt.speed, evt.loop);
+                drained++;
+            }
+        }
+
+        /* 3. Run loop recorder at control rate */
         control_counter++;
         if (control_counter >= CONTROL_DIVIDER) {
             control_counter = 0;
@@ -63,15 +78,15 @@ void audio_task_run(void *param)
             }
         }
 
-        /* 3. Run the mixer pipeline → returns a mixed block */
+        /* 4. Run the mixer pipeline → returns a mixed block */
         audio_block_t *out = mixer_process(&snap);
 
         if (out != NULL) {
-            /* 4. Convert int32 → interleaved int16 for I2S */
+            /* 5. Convert int32 → interleaved int16 for I2S */
             audio_block_to_i2s(out, i2s_buf, 1);
             audio_free(out);
 
-            /* 5. Write to I2S DMA (blocks until buffer available) */
+            /* 6. Write to I2S DMA (blocks until buffer available) */
             i2s_output_write(i2s_buf, BLOCK_SAMPLES * 2 * sizeof(int16_t));
         } else {
             /* Pool exhausted — write silence to prevent DMA underrun */
@@ -82,15 +97,18 @@ void audio_task_run(void *param)
         /* Periodic diagnostics */
         block_count++;
         if (block_count % 1000 == 0) {
+            const char *inst_name =
+                snap.active_instrument == INST_PIANO      ? "piano" :
+                snap.active_instrument == INST_STEEL_DRUM ? "steel" :
+                snap.active_instrument == INST_TRUMPET    ? "trump" :
+                snap.active_instrument == INST_808_BASS   ? "808"   : "?";
             ESP_LOGI(TAG,
-                "Blk=%d | Pool=%d/%d | Sampler=%d | Mode=%s | "
+                "Blk=%d | Pool=%d/%d | Sampler=%d | Inst=%s | "
                 "Rec=%s Play=%s Loop=%d Head=%d",
                 block_count,
                 audio_pool_available(), POOL_SIZE,
                 sampler_active_count(),
-                snap.mode == MODE_SYNTH ? "SYN" :
-                snap.mode == MODE_DRUMS ? "DRM" :
-                snap.mode == MODE_PIANO ? "PNO" : "FX",
+                inst_name,
                 snap.is_recording ? "Y" : "N",
                 snap.is_playing ? "Y" : "N",
                 snap.loop_length,
