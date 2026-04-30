@@ -18,24 +18,21 @@
 static const char *TAG = "sampler";
 
 /* ------------------------------------------------------------------ */
-/* WAV header (standard 44-byte RIFF PCM)                              */
+/* WAV parsing helpers                                                  */
 /* ------------------------------------------------------------------ */
 
-typedef struct __attribute__((packed)) {
-    char     riff[4];
-    uint32_t file_size;
-    char     wave[4];
-    char     fmt[4];
-    uint32_t fmt_size;
-    uint16_t audio_format;
-    uint16_t num_channels;
-    uint32_t sample_rate;
-    uint32_t byte_rate;
-    uint16_t block_align;
-    uint16_t bits_per_sample;
-    char     data[4];
-    uint32_t data_size;
-} wav_header_t;
+static inline uint16_t rd_le16(const uint8_t *p)
+{
+    return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
+}
+
+static inline uint32_t rd_le32(const uint8_t *p)
+{
+    return (uint32_t)p[0] |
+           ((uint32_t)p[1] << 8) |
+           ((uint32_t)p[2] << 16) |
+           ((uint32_t)p[3] << 24);
+}
 
 /* ------------------------------------------------------------------ */
 /* Static state                                                        */
@@ -71,40 +68,87 @@ bool sampler_register(int slot_idx, const char *name,
     }
 
     size_t file_size = wav_end - wav_start;
-    if (file_size < sizeof(wav_header_t)) {
+    if (file_size < 44) {
         ESP_LOGE(TAG, "'%s': file too small (%d bytes)", name, (int)file_size);
         return false;
     }
 
-    const wav_header_t *hdr = (const wav_header_t *)wav_start;
-
     /* Validate */
-    if (memcmp(hdr->riff, "RIFF", 4) != 0 ||
-        memcmp(hdr->wave, "WAVE", 4) != 0) {
+    if (memcmp(wav_start, "RIFF", 4) != 0 ||
+        memcmp(wav_start + 8, "WAVE", 4) != 0) {
         ESP_LOGE(TAG, "'%s': not a valid WAV file", name);
         return false;
     }
 
-    if (hdr->audio_format != 1) {
-        ESP_LOGE(TAG, "'%s': not PCM (format=%d)", name, hdr->audio_format);
+    uint16_t audio_format = 0;
+    uint16_t num_channels = 0;
+    uint16_t bits_per_sample = 0;
+    uint32_t sample_rate = 0;
+    const uint8_t *data_ptr = NULL;
+    uint32_t data_size = 0;
+    bool got_fmt = false;
+    bool got_data = false;
+
+    /* Parse RIFF chunks so WAVs with extra metadata chunks still load. */
+    size_t off = 12; /* after RIFF + size + WAVE */
+    while (off + 8 <= file_size) {
+        const uint8_t *chunk = wav_start + off;
+        uint32_t chunk_size = rd_le32(chunk + 4);
+        size_t payload_off = off + 8;
+        size_t next_off = payload_off + chunk_size + (chunk_size & 1u); /* word align */
+        if (payload_off > file_size || next_off > file_size) {
+            break;
+        }
+
+        if (memcmp(chunk, "fmt ", 4) == 0) {
+            if (chunk_size < 16) {
+                ESP_LOGE(TAG, "'%s': malformed fmt chunk", name);
+                return false;
+            }
+            const uint8_t *fmt = wav_start + payload_off;
+            audio_format = rd_le16(fmt + 0);
+            num_channels = rd_le16(fmt + 2);
+            sample_rate = rd_le32(fmt + 4);
+            bits_per_sample = rd_le16(fmt + 14);
+            got_fmt = true;
+        } else if (memcmp(chunk, "data", 4) == 0) {
+            data_ptr = wav_start + payload_off;
+            data_size = chunk_size;
+            got_data = true;
+        }
+
+        off = next_off;
+    }
+
+    if (!got_fmt || !got_data || data_ptr == NULL || data_size == 0) {
+        ESP_LOGE(TAG, "'%s': missing fmt/data chunks", name);
         return false;
     }
 
-    if (hdr->bits_per_sample != 16) {
-        ESP_LOGE(TAG, "'%s': not 16-bit (got %d-bit)", name, hdr->bits_per_sample);
+    if (audio_format != 1) {
+        ESP_LOGE(TAG, "'%s': not PCM (format=%d)", name, audio_format);
         return false;
     }
 
-    /* Extract PCM data pointer (skip 44-byte header) */
-    const int16_t *pcm = (const int16_t *)(wav_start + sizeof(wav_header_t));
-    uint32_t num_samples = hdr->data_size / sizeof(int16_t) / hdr->num_channels;
+    if (num_channels == 0) {
+        ESP_LOGE(TAG, "'%s': invalid channel count", name);
+        return false;
+    }
+
+    if (bits_per_sample != 16) {
+        ESP_LOGE(TAG, "'%s': not 16-bit (got %d-bit)", name, bits_per_sample);
+        return false;
+    }
+
+    const int16_t *pcm = (const int16_t *)data_ptr;
+    uint32_t num_samples = data_size / sizeof(int16_t) / num_channels;
 
     sample_slot_t *slot = &s_slots[slot_idx];
     strncpy(slot->name, name, SAMPLER_NAME_LEN - 1);
     slot->name[SAMPLER_NAME_LEN - 1] = '\0';
     slot->data        = pcm;
     slot->length      = num_samples;
-    slot->sample_rate = hdr->sample_rate;
+    slot->sample_rate = sample_rate;
     slot->loaded      = true;
 
     if (slot_idx >= s_slot_count) {
@@ -114,9 +158,9 @@ bool sampler_register(int slot_idx, const char *name,
     ESP_LOGI(TAG, "Registered [%d] '%s': %lu samples, %lu Hz, %dch, %.2fs",
              slot_idx, name,
              (unsigned long)num_samples,
-             (unsigned long)hdr->sample_rate,
-             hdr->num_channels,
-             (float)num_samples / hdr->sample_rate);
+             (unsigned long)sample_rate,
+             num_channels,
+             (float)num_samples / sample_rate);
 
     return true;
 }

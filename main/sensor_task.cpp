@@ -176,9 +176,12 @@ static inline uint8_t velocity_from_speed(float speed_mmps)
     float t = (speed_mmps - MIN_SWIPE_SPEED_MMPS) /
               (MAX_SWIPE_SPEED_MMPS - MIN_SWIPE_SPEED_MMPS);
     if (t > 1.0f) t = 1.0f;
-    /* Map [0..1] to MIDI velocity [40..255] so even soft swipes are
-     * audible while leaving headroom for hard ones. */
-    int v = 40 + (int)(t * 215.0f);
+    /* Wider dynamic range at the low end:
+     * - lower floor (8 instead of 40) so very soft swipes are quieter
+     * - square-law curve so most of the velocity range is reserved for
+     *   medium/fast attacks rather than bunching up near loud values. */
+    float shaped = t * t;
+    int v = 8 + (int)(shaped * 247.0f);
     if (v > 255) v = 255;
     return (uint8_t)v;
 }
