@@ -6,7 +6,6 @@ sdkconfig.old
 dependencies.lock
 
 # VS Code
-.vscode
 .vscode/ipch/
 .vscode/*.log
 
