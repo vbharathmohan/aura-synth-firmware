@@ -164,17 +164,17 @@ static void demo_mode_task(void *param)
  * panel is wired. The user reserved pins 12, 13, 14 for the shift
  * register and the I2C / I2S pins are fixed; everything else on
  * the ESP32 GPIO map is fair game. */
-#define BTN_PAD_0_PIN           GPIO_NUM_15  /* piano  / kick  */
-#define BTN_PAD_1_PIN           GPIO_NUM_16  /* steel  / hihat */
-#define BTN_PAD_2_PIN           GPIO_NUM_17  /* trump  / clap  */
-#define BTN_PAD_3_PIN           GPIO_NUM_18  /* 808    / snare */
-#define BTN_PAD_TOGGLE_PIN      GPIO_NUM_19  /* instr <-> drums */
+#define BTN_PAD_0_PIN           GPIO_NUM_36  /* piano  / kick  */
+#define BTN_PAD_1_PIN           GPIO_NUM_39  /* steel  / hihat */
+#define BTN_PAD_2_PIN           GPIO_NUM_34  /* trump  / clap  */
+#define BTN_PAD_3_PIN           GPIO_NUM_37  /* 808    / snare */
+#define BTN_PAD_TOGGLE_PIN      GPIO_NUM_38  /* instr <-> drums */
 /* Prompt 2 transport buttons (active-low, pull-up enabled). */
-#define BTN_REC_PIN             GPIO_NUM_21  /* record / stop recording */
-#define BTN_CLEAR_PIN           GPIO_NUM_23  /* clear active track */
-#define BTN_PLAY_PAUSE_PIN      GPIO_NUM_27  /* play / pause */
+#define BTN_REC_PIN             GPIO_NUM_NC  /* record / stop recording */
+#define BTN_CLEAR_PIN           GPIO_NUM_NC  /* clear active track */
+#define BTN_PLAY_PAUSE_PIN      GPIO_NUM_NC  /* play / pause */
 /* Prompt 3: single button cycles active track 0->1->2->3->0 */
-#define BTN_TRACK_CYCLE_PIN     GPIO_NUM_32
+#define BTN_TRACK_CYCLE_PIN     GPIO_NUM_NC
 
 /* Master FX controls (analog reads / encoder) */
 #define DIAL_VOLUME_ADC         ADC1_CHANNEL_0  /* placeholder */
@@ -182,6 +182,24 @@ static void demo_mode_task(void *param)
 #define DIAL_DELAY_ADC          ADC1_CHANNEL_6  /* placeholder */
 
 #define BTN_DEBOUNCE_US         50000
+
+/** Skip NC pins: (1ULL << GPIO_NUM_NC) is undefined and can break gpio_config. */
+static uint64_t integration_pin_mask_add(uint64_t mask, gpio_num_t pin)
+{
+    if (pin == GPIO_NUM_NC) {
+        return mask;
+    }
+    return mask | (1ULL << pin);
+}
+
+/** Active-low buttons with pull-up: unassigned pin reads as released (high). */
+static int integration_gpio_level(gpio_num_t pin)
+{
+    if (pin == GPIO_NUM_NC) {
+        return 1;
+    }
+    return gpio_get_level(pin);
+}
 
 static const int s_pad_pins[NUM_DRUM_PADS] = {
     BTN_PAD_0_PIN, BTN_PAD_1_PIN, BTN_PAD_2_PIN, BTN_PAD_3_PIN,
@@ -206,13 +224,17 @@ static void integration_buttons_init(void)
     io.pull_up_en   = GPIO_PULLUP_ENABLE;
     io.pull_down_en = GPIO_PULLDOWN_DISABLE;
     io.intr_type    = GPIO_INTR_DISABLE;
-    io.pin_bit_mask =
-        (1ULL << BTN_PAD_0_PIN) | (1ULL << BTN_PAD_1_PIN) |
-        (1ULL << BTN_PAD_2_PIN) | (1ULL << BTN_PAD_3_PIN) |
-        (1ULL << BTN_PAD_TOGGLE_PIN) |
-        (1ULL << BTN_REC_PIN) | (1ULL << BTN_CLEAR_PIN) |
-        (1ULL << BTN_PLAY_PAUSE_PIN) |
-        (1ULL << BTN_TRACK_CYCLE_PIN);
+    uint64_t mask = 0;
+    mask = integration_pin_mask_add(mask, BTN_PAD_0_PIN);
+    mask = integration_pin_mask_add(mask, BTN_PAD_1_PIN);
+    mask = integration_pin_mask_add(mask, BTN_PAD_2_PIN);
+    mask = integration_pin_mask_add(mask, BTN_PAD_3_PIN);
+    mask = integration_pin_mask_add(mask, BTN_PAD_TOGGLE_PIN);
+    mask = integration_pin_mask_add(mask, BTN_REC_PIN);
+    mask = integration_pin_mask_add(mask, BTN_CLEAR_PIN);
+    mask = integration_pin_mask_add(mask, BTN_PLAY_PAUSE_PIN);
+    mask = integration_pin_mask_add(mask, BTN_TRACK_CYCLE_PIN);
+    io.pin_bit_mask = mask;
     gpio_config(&io);
 }
 
@@ -251,7 +273,7 @@ static void integration_mode_task(void *param)
         prev_toggle = toggle_now;
 
         /* Transport buttons (Prompt 2) */
-        bool rec_now = gpio_get_level(BTN_REC_PIN) != 0;
+        bool rec_now = integration_gpio_level(BTN_REC_PIN) != 0;
         if (!rec_now && prev_rec &&
             (now - last_edge_us[NUM_DRUM_PADS + 1]) > BTN_DEBOUNCE_US) {
             if (shared_state_lock()) {
@@ -263,7 +285,7 @@ static void integration_mode_task(void *param)
         }
         prev_rec = rec_now;
 
-        bool clr_now = gpio_get_level(BTN_CLEAR_PIN) != 0;
+        bool clr_now = integration_gpio_level(BTN_CLEAR_PIN) != 0;
         if (!clr_now && prev_clear &&
             (now - last_edge_us[NUM_DRUM_PADS + 2]) > BTN_DEBOUNCE_US) {
             if (shared_state_lock()) {
@@ -275,7 +297,7 @@ static void integration_mode_task(void *param)
         }
         prev_clear = clr_now;
 
-        bool play_now = gpio_get_level(BTN_PLAY_PAUSE_PIN) != 0;
+        bool play_now = integration_gpio_level(BTN_PLAY_PAUSE_PIN) != 0;
         if (!play_now && prev_play &&
             (now - last_edge_us[NUM_DRUM_PADS + 3]) > BTN_DEBOUNCE_US) {
             if (shared_state_lock()) {
@@ -288,7 +310,7 @@ static void integration_mode_task(void *param)
         prev_play = play_now;
 
         /* Prompt 3: cycle active track with one button */
-        bool track_now = gpio_get_level(BTN_TRACK_CYCLE_PIN) != 0;
+        bool track_now = integration_gpio_level(BTN_TRACK_CYCLE_PIN) != 0;
         if (!track_now && prev_track &&
             (now - last_edge_us[NUM_DRUM_PADS + 4]) > BTN_DEBOUNCE_US) {
             int next_track = 0;

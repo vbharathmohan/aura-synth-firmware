@@ -78,7 +78,7 @@ static const char *TAG = "sensor_task";
 
 /* Distance gates (mm). Tuned for a hand swiping a few cm above the
  * sensor face. */
-#define DIST_ARM_MM         320      /* hand must rise above this to re-arm */
+#define DIST_ARM_MM         260      /* hand must rise above this to re-arm */
 #define DIST_TRIGGER_MM     220      /* crossing below this fires a note */
 #define DIST_RANGE_MAX      1000     /* anything farther = "no hand" */
 
@@ -96,7 +96,7 @@ static const char *TAG = "sensor_task";
  *   400  mm/s  -> mezzo-piano (~80)
  *   1500 mm/s  -> fortissimo (255)
  * Anything above that clips to 255. */
-#define MIN_SWIPE_SPEED_MMPS    150.0f
+#define MIN_SWIPE_SPEED_MMPS    100.0f
 #define MAX_SWIPE_SPEED_MMPS    1250.0f
 
 /* After triggering a note, ignore further triggers from the same

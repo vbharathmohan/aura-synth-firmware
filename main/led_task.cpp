@@ -48,7 +48,11 @@ static const char *TAG = "led_task";
 #define BIN_REGION_LEDS     (LEDS_PER_BIN * NUM_TOF_SENSORS)
 /* Spare tail (LED indices BIN_REGION_LEDS .. LED_STRIP_COUNT-1) is
  * dedicated to the metronome overlay. For the default 60-LED strip
- * this is the 4 LEDs at indices 56..59. */
+ * this is the 4 LEDs at indices 56..59.
+ *
+ * ToF bins are mapped reversed along the strip (sensor 0 at the far
+ * end of the bin region) so physical wiring matches the enclosure;
+ * metronome indices are unchanged. */
 
 /* Per-bin hue spread around the wheel (Lennart's palette). */
 static const float BIN_HUES[NUM_TOF_SENSORS] = {
@@ -115,11 +119,17 @@ static inline bool led_ready(void)
     return s_initialised && (s_strip != nullptr);
 }
 
+/** First LED index for ToF bin `bin` (strip reversed vs sensor order). */
+static inline int strip_bin_start(int bin)
+{
+    return (NUM_TOF_SENSORS - 1 - bin) * LEDS_PER_BIN;
+}
+
 static void set_bin_rgb(int bin, uint8_t r, uint8_t g, uint8_t b)
 {
     if (!led_ready()) return;
     if (bin < 0 || bin >= NUM_TOF_SENSORS) return;
-    int start = bin * LEDS_PER_BIN;
+    int start = strip_bin_start(bin);
     for (int j = 0; j < LEDS_PER_BIN; j++) {
         led_strip_set_pixel(s_strip, start + j, r, g, b);
     }
@@ -150,7 +160,7 @@ static void led_render_task(void *)
             uint8_t val = (uint8_t)(s_smooth_v[b] * BIN_PEAK_VALUE);
             hsv_to_rgb(BIN_HUES[b], 255, val, &r, &g, &bl);
 
-            int start = b * LEDS_PER_BIN;
+            int start = strip_bin_start(b);
             for (int j = 0; j < LEDS_PER_BIN; j++) {
                 led_strip_set_pixel(s_strip, start + j, r, g, bl);
             }
