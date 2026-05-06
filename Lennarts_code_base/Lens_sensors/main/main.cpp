@@ -54,8 +54,8 @@ static const char *TAG = "THEREMIN_PRO";
 
 // ── Shift Register Pins ──────────────────────────────
 #define SHIFT_SER GPIO_NUM_14
-#define SHIFT_SRCLK GPIO_NUM_12
-#define SHIFT_RCLK GPIO_NUM_13
+#define SHIFT_SRCLK GPIO_NUM_15
+#define SHIFT_RCLK GPIO_NUM_32
 
 // ── Hardware Pin Map ─────────────────────────────────
 #define I2C_SDA_PIN (gpio_num_t)22
@@ -66,8 +66,9 @@ static const char *TAG = "THEREMIN_PRO";
 #define I2S_WS_IO GPIO_NUM_25
 #define I2S_DO_IO GPIO_NUM_4
 #define I2S_MUTE_PIN GPIO_NUM_27
-#define BUTTON_PIN GPIO_NUM_38
-#define LED_STRIP_GPIO GPIO_NUM_5
+#define BUTTON_PIN GPIO_NUM_3
+8    
+#define LED_STRIP_GPIO GPIO_NUM_33
 
 const uint8_t SENSOR_ADDRS[SENSOR_COUNT] = {0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37};
 const uint32_t BIN_FREQS[SENSOR_COUNT] = {523, 587, 659, 698, 784, 880, 988, 1047};

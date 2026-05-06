@@ -1,39 +1,51 @@
 /**
- * main.c — Aura-Synth DEMO: 90-second guided audio tour.
+ * main.c — Aura-Synth boot + mode controller.
  *
- * This demo exercises every audio feature in sequence, with clear
- * serial log narration so your team can follow along.
+ * The instrument has two top-level modes, selected at compile time:
  *
- * Timeline:
- *   0-15s   DEMO 1: Synth voice — pure sine, then saw, then blend
- *   15-30s  DEMO 2: Filter sweep — hear the biquad LP open and close
- *   30-40s  DEMO 3: LFO tremolo — slow then fast wobble
- *   40-50s  DEMO 4: Pitch bend — smooth pitch slides
- *   50-65s  DEMO 5: Drum sampler — kick/snare/hihat pattern
- *   65-75s  DEMO 6: Delay effect — toggle echo on/off
- *   75-90s  DEMO 7: Multi-track — synth + drums simultaneously
+ *   DEMO_MODE
+ *       No physical buttons are wired up. A small task on Core 0
+ *       cycles the active instrument (piano → steel drum → trumpet →
+ *       808 bass) every 10 seconds. The 8 ToF sensors play whatever
+ *       instrument is currently selected, so a swipe across the array
+ *       walks through one octave of C-major in the active instrument.
  *
- * After 90s it loops back to the start.
+ *   INTEGRATION_MODE
+ *       Four physical buttons select instruments OR drum pads (a
+ *       fifth button toggles between the two functions). Three
+ *       master-bus controls map to volume / biquad filter cutoff /
+ *       delay mix. ToFs always play the currently selected instrument.
  *
- * WHAT THIS PROVES:
- *   ✓ Block pool runs leak-free for thousands of cycles
- *   ✓ Synth voice generates sine + detuned saw with crossfade
- *   ✓ Biquad LP filter responds to cutoff changes in real time
- *   ✓ LFO tremolo modulates amplitude at variable rates
- *   ✓ Pitch bend shifts frequency smoothly (±2 semitones)
- *   ✓ Sampler triggers flash-embedded WAV files with velocity
- *   ✓ Delay effect adds echo from PSRAM ring buffer
- *   ✓ Mixer accumulates multiple sources without clipping
- *   ✓ I2S DMA feeds the DAC without dropouts
- *   ✓ Shared state correctly passes data between cores
+ * Only DEMO_MODE is fully implemented today — INTEGRATION_MODE has
+ * scaffolding (button task, pin map, dial reads) so it compiles and
+ * is easy to flesh out next. The seam in both modes is the same:
+ * everything that produces sound goes through the note-event queue,
+ * which keeps the loop-recorder feature (planned next) trivial to
+ * slot in later.
+ *
+ * To switch modes: comment/uncomment the #define below.
  */
+
+/* ====================== MODE SELECT ============================== */
+/* #define DEMO_MODE*/
+#define INTEGRATION_MODE 
+/* ================================================================== */
+
+#if defined(DEMO_MODE) && defined(INTEGRATION_MODE)
+#error "Pick exactly one of DEMO_MODE / INTEGRATION_MODE"
+#endif
+#if !defined(DEMO_MODE) && !defined(INTEGRATION_MODE)
+#error "Pick exactly one of DEMO_MODE / INTEGRATION_MODE"
+#endif
 
 #include <stdio.h>
 #include <math.h>
+#include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
+#include "driver/gpio.h"
 
 #include "shared_state.h"
 #include "audio_block.h"
@@ -43,394 +55,352 @@
 #include "loop_recorder.h"
 #include "audio_task.h"
 #include "effects.h"
+#include "sensor_task.h"
+#include "led_task.h"
 
-static const char *TAG = "demo";
+static const char *TAG = "aura_synth";
 
 /* ------------------------------------------------------------------ */
 /* Embedded WAV samples                                                */
 /* ------------------------------------------------------------------ */
+/* Each entry below corresponds to a CMakeLists `target_add_binary_data`
+ * line. The asm() label is fixed by the linker (`_binary_<file>_start`);
+ * the C identifier on the left can be anything legal — we use a friendly
+ * name so files starting with a digit (808_c1.wav) compile cleanly. */
 
-extern const uint8_t kick_wav_start[]  asm("_binary_kick_wav_start");
-extern const uint8_t kick_wav_end[]    asm("_binary_kick_wav_end");
-extern const uint8_t snare_wav_start[] asm("_binary_snare_wav_start");
-extern const uint8_t snare_wav_end[]   asm("_binary_snare_wav_end");
-extern const uint8_t hihat_wav_start[] asm("_binary_hihat_wav_start");
-extern const uint8_t hihat_wav_end[]   asm("_binary_hihat_wav_end");
+/* Drum kit */
+extern const uint8_t kick_wav_start[]            asm("_binary_kick_wav_start");
+extern const uint8_t kick_wav_end[]              asm("_binary_kick_wav_end");
+extern const uint8_t snare_wav_start[]           asm("_binary_snare_wav_start");
+extern const uint8_t snare_wav_end[]             asm("_binary_snare_wav_end");
+extern const uint8_t hihat_wav_start[]           asm("_binary_hihat_wav_start");
+extern const uint8_t hihat_wav_end[]             asm("_binary_hihat_wav_end");
+extern const uint8_t clap_wav_start[]           asm("_binary_clap_wav_start");
+extern const uint8_t clap_wav_end[]             asm("_binary_clap_wav_end");
+
+/* Melodic instruments (each is one octave of C natural) */
+extern const uint8_t piano_c4_wav_start[]        asm("_binary_piano_c4_wav_start");
+extern const uint8_t piano_c4_wav_end[]          asm("_binary_piano_c4_wav_end");
+extern const uint8_t steel_drum_c4_wav_start[]   asm("_binary_steel_drum_c4_wav_start");
+extern const uint8_t steel_drum_c4_wav_end[]     asm("_binary_steel_drum_c4_wav_end");
+extern const uint8_t trumpet_c6_wav_start[]      asm("_binary_trumpet_c6_wav_start");
+extern const uint8_t trumpet_c6_wav_end[]        asm("_binary_trumpet_c6_wav_end");
+extern const uint8_t bass_808_wav_start[]        asm("_binary_808_c1_wav_start");
+extern const uint8_t bass_808_wav_end[]          asm("_binary_808_c1_wav_end");
 
 /* ------------------------------------------------------------------ */
-/* Master delay effect                                                 */
+/* Master delay effect (allocated once; toggled via mix knob)          */
 /* ------------------------------------------------------------------ */
 
 static delay_t s_master_delay;
-static bool s_delay_active = false;
+static bool    s_master_delay_ready = false;
 
 /* ------------------------------------------------------------------ */
-/* Helper: set synth to a clean starting state                         */
+/* Sampler registration                                                */
 /* ------------------------------------------------------------------ */
 
-static void synth_defaults(void)
+static void register_all_samples(void)
 {
-    if (!shared_state_lock()) return;
-    g_state.mode = MODE_SYNTH;
-    g_state.active_track = 0;
-    g_state.master_volume = 0.8f;
-    g_state.tracks[0].pitch = 60;       /* middle C */
-    g_state.tracks[0].volume = 0.6f;
-    g_state.tracks[0].waveform_mix = 0.0f;  /* pure sine */
-    g_state.tracks[0].detune = 0.0f;
-    g_state.tracks[0].lfo_rate = 0.01f;     /* effectively off */
-    g_state.tracks[0].filter_cutoff = 2000.0f;  /* wide open */
-    g_state.tracks[0].pitch_bend = 0.0f;
-    shared_state_unlock();
+    /* Slot indices live in shared_state.h so sensor_task and mixer
+     * agree on the mapping. */
+    sampler_register(SAMPLE_SLOT_PIANO,
+                     "piano",     piano_c4_wav_start,      piano_c4_wav_end);
+    sampler_register(SAMPLE_SLOT_STEEL_DRUM,
+                     "steeldrm",  steel_drum_c4_wav_start, steel_drum_c4_wav_end);
+    sampler_register(SAMPLE_SLOT_TRUMPET,
+                     "trumpet",   trumpet_c6_wav_start,    trumpet_c6_wav_end);
+    sampler_register(SAMPLE_SLOT_808_BASS,
+                     "808bass",   bass_808_wav_start,      bass_808_wav_end);
+    sampler_register(SAMPLE_SLOT_KICK,
+                     "kick",      kick_wav_start,          kick_wav_end);
+    sampler_register(SAMPLE_SLOT_SNARE,
+                     "snare",     snare_wav_start,         snare_wav_end);
+    sampler_register(SAMPLE_SLOT_HIHAT,
+                     "hihat",     hihat_wav_start,         hihat_wav_end);
+    sampler_register(SAMPLE_SLOT_CLAP,
+                     "clap",      clap_wav_start,          clap_wav_end);
 }
 
-/* ------------------------------------------------------------------ */
-/* Demo sequence task (Core 0)                                         */
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
+/* DEMO MODE                                                           */
+/* ================================================================== */
+#ifdef DEMO_MODE
 
-static void demo_task(void *param)
+#define DEMO_INSTRUMENT_PERIOD_MS   10000   /* 10 s per instrument */
+
+static void demo_mode_task(void *param)
 {
-    ESP_LOGI(TAG, "Demo task on core %d — 90 second audio tour", xPortGetCoreID());
+    (void)param;
+    ESP_LOGI(TAG, "demo_mode_task on core %d — cycling instruments every %d ms",
+             xPortGetCoreID(), DEMO_INSTRUMENT_PERIOD_MS);
 
-    const int TICK_MS = 50;   /* 20 Hz control rate for smooth changes */
-    int tick = 0;
-    int demo_cycle = 0;
+    const instrument_t cycle[] = {
+        INST_PIANO, INST_STEEL_DRUM, INST_TRUMPET, INST_808_BASS,
+    };
+    const char *names[] = {"piano", "steel drum", "trumpet", "808 bass"};
+    const int N = sizeof(cycle) / sizeof(cycle[0]);
+
+    int idx = 0;
+    while (1) {
+        if (shared_state_lock()) {
+            g_state.active_instrument = cycle[idx];
+            shared_state_unlock();
+        }
+        ESP_LOGI(TAG, "==> Instrument: %s", names[idx]);
+
+        vTaskDelay(pdMS_TO_TICKS(DEMO_INSTRUMENT_PERIOD_MS));
+        idx = (idx + 1) % N;
+    
+        #ifdef INTEGRATION_MODE
+
+        static int last_print_us = 0;
+
+        if ((now - last_print_us) > 200000) {  // every 200ms
+            int b0 = gpio_get_level(BTN_PAD_0_PIN);
+            int b1 = gpio_get_level(BTN_PAD_1_PIN);
+            int b2 = gpio_get_level(BTN_PAD_2_PIN);
+            int b3 = gpio_get_level(BTN_PAD_3_PIN);
+            int bt = gpio_get_level(BTN_PAD_TOGGLE_PIN);
+
+            ESP_LOGI(TAG,
+                "[BTN RAW] PAD0=%d PAD1=%d PAD2=%d PAD3=%d TOGGLE=%d",
+                b0, b1, b2, b3, bt
+            );
+
+            last_print_us = now;
+        }
+        #endif        
+    
+    }
+}
+
+#endif 
+ /* DEMO_MODE */
+
+/* ================================================================== */
+/* INTEGRATION MODE                                                    */
+/* ================================================================== */
+#ifdef INTEGRATION_MODE
+
+/* === ROUND 1 PIN ASSIGNMENTS (Feather V2) ===
+ * Testing: 4 pad buttons + pad toggle.
+ * GPIO 38 = onboard button (has pull-up).
+ * GPIO 34/36/37/39 = input-only pins (need external 10K pull-up to 3.3V).
+ */
+#define BTN_PAD_0_PIN           GPIO_NUM_36  /* piano  / kick   (A4, ext pull-up) */
+#define BTN_PAD_1_PIN           GPIO_NUM_39  /* steel  / hihat  (A3, ext pull-up) */
+#define BTN_PAD_2_PIN           GPIO_NUM_34  /* trump  / clap   (A2, ext pull-up) */
+#define BTN_PAD_3_PIN           GPIO_NUM_37  /* 808    / snare  (D37, ext pull-up) */
+#define BTN_PAD_TOGGLE_PIN      GPIO_NUM_38  /* instr <-> drums (onboard button) */
+
+/* Transport buttons — DISABLED for Round 1. Set to -1 so they
+ * never match any real GPIO read and the code safely does nothing. */
+#define BTN_REC_PIN             GPIO_NUM_NC
+#define BTN_CLEAR_PIN           GPIO_NUM_NC
+#define BTN_PLAY_PAUSE_PIN      GPIO_NUM_NC
+#define BTN_TRACK_CYCLE_PIN     GPIO_NUM_NC     
+
+/* Master FX controls (analog reads / encoder) */
+#define DIAL_VOLUME_ADC         ADC1_CHANNEL_0  /* placeholder */
+#define DIAL_FILTER_ADC         ADC1_CHANNEL_3  /* placeholder */
+#define DIAL_DELAY_ADC          ADC1_CHANNEL_6  /* placeholder */
+
+#define BTN_DEBOUNCE_US         50000
+
+static const int s_pad_pins[NUM_DRUM_PADS] = {
+    BTN_PAD_0_PIN, BTN_PAD_1_PIN, BTN_PAD_2_PIN, BTN_PAD_3_PIN,
+};
+
+/* Drum slots in the same physical order as the buttons.
+ * (User-specified mapping: kick / hihat / clap / snare.) */
+static const uint8_t s_pad_drum_slot[NUM_DRUM_PADS] = {
+    SAMPLE_SLOT_KICK,  SAMPLE_SLOT_HIHAT,
+    SAMPLE_SLOT_CLAP,  SAMPLE_SLOT_SNARE,
+};
+
+/* Instruments in the same physical order as the buttons. */
+static const instrument_t s_pad_instrument[NUM_DRUM_PADS] = {
+    INST_PIANO, INST_STEEL_DRUM, INST_TRUMPET, INST_808_BASS,
+};
+
+static void integration_buttons_init(void)
+{
+    /* GPIO 38 has an onboard pull-up. GPIO 34/36/37/39 are input-only
+     * and CANNOT use internal pull-ups — you MUST wire external 10K
+     * resistors from each pin to 3.3V on the breadboard. */
+    gpio_config_t io = {0};
+    io.mode         = GPIO_MODE_INPUT;
+    io.pull_up_en   = GPIO_PULLUP_DISABLE;  /* external pull-ups used */
+    io.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    io.intr_type    = GPIO_INTR_DISABLE;
+
+    /* Only configure the pins we're actually using in this round.
+     * Round 1: pad buttons + toggle. */
+    io.pin_bit_mask =
+        (1ULL << BTN_PAD_0_PIN) | (1ULL << BTN_PAD_1_PIN) |
+        (1ULL << BTN_PAD_2_PIN) | (1ULL << BTN_PAD_3_PIN) |
+        (1ULL << BTN_PAD_TOGGLE_PIN);
+    gpio_config(&io);
+
+    ESP_LOGI(TAG, "Buttons init: PAD0=%d PAD1=%d PAD2=%d PAD3=%d TOGGLE=%d",
+             BTN_PAD_0_PIN, BTN_PAD_1_PIN, BTN_PAD_2_PIN,
+             BTN_PAD_3_PIN, BTN_PAD_TOGGLE_PIN);
+}
+
+static void integration_mode_task(void *param)
+{
+    (void)param;
+    ESP_LOGI(TAG, "integration_mode_task on core %d", xPortGetCoreID());
+    ESP_LOGW(TAG, "INTEGRATION_MODE button & dial handling is a stub.");
+
+    integration_buttons_init();
+
+    bool prev_pad[NUM_DRUM_PADS] = {true, true, true, true};
+    bool prev_toggle = true;
+    bool prev_rec = true;
+    bool prev_clear = true;
+    bool prev_play = true;
+    bool prev_track = true;
+    int64_t last_edge_us[NUM_DRUM_PADS + 5] = {0}; /* pads + toggle + rec/clear/play/track */
 
     while (1) {
-        float t = tick * TICK_MS / 1000.0f;  /* time in seconds */
-        float t_in_demo = t - (demo_cycle * 90.0f);  /* time within current 90s cycle */
+        int64_t now = (int64_t)xTaskGetTickCount() * portTICK_PERIOD_MS * 1000;
 
-        /* ============================================================ */
-        /* DEMO 1: Synth waveforms (0-15s)                              */
-        /* Pure sine → detuned saw → blended                            */
-        /* ============================================================ */
-        if (t_in_demo >= 0.0f && t_in_demo < 15.0f) {
-
-            if (tick == 0 || (tick > 0 && t_in_demo < 0.05f)) {
-                synth_defaults();
-                ESP_LOGI(TAG, "");
-                ESP_LOGI(TAG, "====== DEMO 1: SYNTH WAVEFORMS (0-15s) ======");
-                ESP_LOGI(TAG, "  0-5s:  Pure sine wave at C4 (262 Hz)");
-                ESP_LOGI(TAG, "  5-10s: Detuned sawtooth wave");
-                ESP_LOGI(TAG, "  10-15s: Blend sine + saw with detune");
-            }
-
+        /* Read the toggle button (pad mode switch) */
+        bool toggle_now = gpio_get_level(BTN_PAD_TOGGLE_PIN) != 0;
+        if (!toggle_now && prev_toggle &&
+            (now - last_edge_us[NUM_DRUM_PADS]) > BTN_DEBOUNCE_US) {
             if (shared_state_lock()) {
-                g_state.tracks[0].pitch = 60;  /* C4 */
-
-                if (t_in_demo < 5.0f) {
-                    /* Pure sine */
-                    g_state.tracks[0].waveform_mix = 0.0f;
-                    g_state.tracks[0].detune = 0.0f;
-                    if ((tick * TICK_MS) % 5000 == 0)
-                        ESP_LOGI(TAG, "  >> Pure sine — clean, smooth tone");
-                }
-                else if (t_in_demo < 10.0f) {
-                    /* Pure saw with detune */
-                    g_state.tracks[0].waveform_mix = 1.0f;
-                    g_state.tracks[0].detune = 2.0f;
-                    if ((tick * TICK_MS) % 5000 == 0)
-                        ESP_LOGI(TAG, "  >> Sawtooth + 2Hz detune — buzzy, rich");
-                }
-                else {
-                    /* Blend: 50/50 with fat detune */
-                    g_state.tracks[0].waveform_mix = 0.5f;
-                    g_state.tracks[0].detune = 3.0f;
-                    if ((tick * TICK_MS) % 5000 == 0)
-                        ESP_LOGI(TAG, "  >> 50/50 blend + 3Hz detune — warm, chorused");
-                }
+                g_state.pad_mode = (g_state.pad_mode == PAD_INSTRUMENTS)
+                                    ? PAD_DRUMS : PAD_INSTRUMENTS;
                 shared_state_unlock();
             }
+            last_edge_us[NUM_DRUM_PADS] = now;
+            ESP_LOGI(TAG, "Pad mode -> %s",
+                     g_state.pad_mode == PAD_DRUMS ? "DRUMS" : "INSTRUMENTS");
         }
+        prev_toggle = toggle_now;
 
-        /* ============================================================ */
-        /* DEMO 2: Filter sweep (15-30s)                                */
-        /* Biquad LP cutoff sweeps from 200 Hz to 2000 Hz and back      */
-        /* ============================================================ */
-        else if (t_in_demo >= 15.0f && t_in_demo < 30.0f) {
-
-            if (t_in_demo < 15.05f) {
-                ESP_LOGI(TAG, "");
-                ESP_LOGI(TAG, "====== DEMO 2: FILTER SWEEP (15-30s) ======");
-                ESP_LOGI(TAG, "  Sawtooth held at C3 — filter opens and closes");
-                ESP_LOGI(TAG, "  Listen for the brightness change");
-            }
-
+        /* Transport buttons (Prompt 2) */
+        bool rec_now = gpio_get_level(BTN_REC_PIN) != 0;
+        if (!rec_now && prev_rec &&
+            (now - last_edge_us[NUM_DRUM_PADS + 1]) > BTN_DEBOUNCE_US) {
             if (shared_state_lock()) {
-                g_state.tracks[0].pitch = 48;  /* C3 — low note shows filter better */
-                g_state.tracks[0].waveform_mix = 0.8f;  /* mostly saw for harmonic content */
-                g_state.tracks[0].detune = 1.0f;
-                g_state.tracks[0].volume = 0.7f;
-
-                /* Triangle sweep: 200 → 2000 → 200 over 15 seconds */
-                float sweep_t = (t_in_demo - 15.0f) / 15.0f;  /* 0 to 1 */
-                float triangle = (sweep_t < 0.5f) ? (sweep_t * 2.0f) : (2.0f - sweep_t * 2.0f);
-                g_state.tracks[0].filter_cutoff = 200.0f + triangle * 1800.0f;
-
-                if ((tick * TICK_MS) % 2000 == 0)
-                    ESP_LOGI(TAG, "  >> Filter cutoff: %.0f Hz",
-                             g_state.tracks[0].filter_cutoff);
+                g_state.record_pressed = true;
                 shared_state_unlock();
             }
+            last_edge_us[NUM_DRUM_PADS + 1] = now;
+            ESP_LOGI(TAG, "Transport: REC toggle");
         }
+        prev_rec = rec_now;
 
-        /* ============================================================ */
-        /* DEMO 3: LFO tremolo (30-40s)                                 */
-        /* Slow wobble → fast wobble                                     */
-        /* ============================================================ */
-        else if (t_in_demo >= 30.0f && t_in_demo < 40.0f) {
-
-            if (t_in_demo < 30.05f) {
-                ESP_LOGI(TAG, "");
-                ESP_LOGI(TAG, "====== DEMO 3: LFO TREMOLO (30-40s) ======");
-                ESP_LOGI(TAG, "  30-35s: Slow tremolo (2 Hz) — gentle pulse");
-                ESP_LOGI(TAG, "  35-40s: Fast tremolo (12 Hz) — vibrato effect");
-            }
-
+        bool clr_now = gpio_get_level(BTN_CLEAR_PIN) != 0;
+        if (!clr_now && prev_clear &&
+            (now - last_edge_us[NUM_DRUM_PADS + 2]) > BTN_DEBOUNCE_US) {
             if (shared_state_lock()) {
-                g_state.tracks[0].pitch = 64;  /* E4 */
-                g_state.tracks[0].waveform_mix = 0.3f;
-                g_state.tracks[0].filter_cutoff = 1500.0f;
-                g_state.tracks[0].detune = 1.5f;
+                g_state.clear_pressed = true;
+                shared_state_unlock();
+            }
+            last_edge_us[NUM_DRUM_PADS + 2] = now;
+            ESP_LOGI(TAG, "Transport: CLEAR");
+        }
+        prev_clear = clr_now;
 
-                if (t_in_demo < 35.0f) {
-                    g_state.tracks[0].lfo_rate = 2.0f;
+        bool play_now = gpio_get_level(BTN_PLAY_PAUSE_PIN) != 0;
+        if (!play_now && prev_play &&
+            (now - last_edge_us[NUM_DRUM_PADS + 3]) > BTN_DEBOUNCE_US) {
+            if (shared_state_lock()) {
+                g_state.play_pause_pressed = true;
+                shared_state_unlock();
+            }
+            last_edge_us[NUM_DRUM_PADS + 3] = now;
+            ESP_LOGI(TAG, "Transport: PLAY/PAUSE");
+        }
+        prev_play = play_now;
+
+        /* Prompt 3: cycle active track with one button */
+        bool track_now = gpio_get_level(BTN_TRACK_CYCLE_PIN) != 0;
+        if (!track_now && prev_track &&
+            (now - last_edge_us[NUM_DRUM_PADS + 4]) > BTN_DEBOUNCE_US) {
+            int next_track = 0;
+            if (shared_state_lock()) {
+                next_track = (g_state.active_track + 1) % NUM_TRACKS;
+                g_state.active_track = (uint8_t)next_track;
+                shared_state_unlock();
+            }
+            last_edge_us[NUM_DRUM_PADS + 4] = now;
+            ESP_LOGI(TAG, "Transport: TRACK -> %d", next_track);
+        }
+        prev_track = track_now;
+
+        /* Read the four pad buttons */
+        for (int i = 0; i < NUM_DRUM_PADS; i++) {
+            bool now_pressed = gpio_get_level(s_pad_pins[i]) == 0; /* active-low */
+            bool was_pressed = !prev_pad[i];
+
+            if (now_pressed && !was_pressed &&
+                (now - last_edge_us[i]) > BTN_DEBOUNCE_US) {
+                if (g_state.pad_mode == PAD_DRUMS) {
+                    /* Trigger drum directly */
+                    note_event_post(s_pad_drum_slot[i],
+                                    /*velocity=*/200,
+                                    /*speed=*/1.0f,
+                                    /*loop=*/false,
+                                    /*source=*/(int8_t)(10 + i));
                 } else {
-                    g_state.tracks[0].lfo_rate = 12.0f;
-                }
-
-                if ((tick * TICK_MS) % 5000 == 0)
-                    ESP_LOGI(TAG, "  >> LFO rate: %.1f Hz",
-                             g_state.tracks[0].lfo_rate);
-                shared_state_unlock();
-            }
-        }
-
-        /* ============================================================ */
-        /* DEMO 4: Pitch bend (40-50s)                                  */
-        /* Smooth slides up and down                                     */
-        /* ============================================================ */
-        else if (t_in_demo >= 40.0f && t_in_demo < 50.0f) {
-
-            if (t_in_demo < 40.05f) {
-                ESP_LOGI(TAG, "");
-                ESP_LOGI(TAG, "====== DEMO 4: PITCH BEND (40-50s) ======");
-                ESP_LOGI(TAG, "  Holding C4 — bending pitch ±2 semitones");
-                ESP_LOGI(TAG, "  Listen for smooth pitch slides");
-            }
-
-            if (shared_state_lock()) {
-                g_state.tracks[0].pitch = 60;
-                g_state.tracks[0].waveform_mix = 0.4f;
-                g_state.tracks[0].lfo_rate = 0.01f;  /* LFO off */
-                g_state.tracks[0].filter_cutoff = 2000.0f;
-                g_state.tracks[0].detune = 0.0f;
-
-                /* Sine wave bend: smoothly sweeps -1 to +1 to -1 */
-                float bend_t = (t_in_demo - 40.0f) / 10.0f;
-                float bend = sinf(bend_t * 2.0f * 3.14159f);
-                g_state.tracks[0].pitch_bend = bend;
-
-                if ((tick * TICK_MS) % 2000 == 0)
-                    ESP_LOGI(TAG, "  >> Pitch bend: %+.2f (%.1f Hz shift)",
-                             bend, bend * 2.0f);
-                shared_state_unlock();
-            }
-        }
-
-        /* ============================================================ */
-        /* DEMO 5: Drum sampler (50-65s)                                */
-        /* Kick/snare/hihat pattern at 120 BPM                          */
-        /* ============================================================ */
-        else if (t_in_demo >= 50.0f && t_in_demo < 65.0f) {
-
-            if (t_in_demo < 50.05f) {
-                synth_defaults();
-                ESP_LOGI(TAG, "");
-                ESP_LOGI(TAG, "====== DEMO 5: DRUM SAMPLER (50-65s) ======");
-                ESP_LOGI(TAG, "  120 BPM pattern: kick-hihat-snare-hihat");
-                ESP_LOGI(TAG, "  Using flash-embedded WAV samples");
-            }
-
-            if (shared_state_lock()) {
-                g_state.mode = MODE_DRUMS;
-                g_state.master_volume = 0.9f;
-
-                /* 120 BPM = 500ms per beat, 250ms per eighth note */
-                /* Pattern: kick, hihat, snare, hihat (repeating) */
-                int beat_ms = (int)((t_in_demo - 50.0f) * 1000.0f) % 1000;
-                int sub_beat = beat_ms / 250;
-
-                /* Trigger on the exact tick boundary */
-                int ms_in_sub = beat_ms % 250;
-                if (ms_in_sub < TICK_MS) {
-                    switch (sub_beat) {
-                        case 0:  /* kick */
-                            g_state.drum.slot = 0;
-                            g_state.drum.velocity = 220;
-                            g_state.drum.trigger = true;
-                            break;
-                        case 1:  /* hihat */
-                            g_state.drum.slot = 2;
-                            g_state.drum.velocity = 150;
-                            g_state.drum.trigger = true;
-                            break;
-                        case 2:  /* snare */
-                            g_state.drum.slot = 1;
-                            g_state.drum.velocity = 200;
-                            g_state.drum.trigger = true;
-                            break;
-                        case 3:  /* hihat */
-                            g_state.drum.slot = 2;
-                            g_state.drum.velocity = 120;
-                            g_state.drum.trigger = true;
-                            break;
+                    /* Switch active instrument */
+                    if (shared_state_lock()) {
+                        g_state.active_instrument = s_pad_instrument[i];
+                        shared_state_unlock();
                     }
+                    ESP_LOGI(TAG, "Active instrument -> %d", (int)s_pad_instrument[i]);
                 }
-                shared_state_unlock();
+                last_edge_us[i] = now;
             }
+            prev_pad[i] = !now_pressed;
         }
 
-        /* ============================================================ */
-        /* DEMO 6: Delay effect (65-75s)                                */
-        /* Play a note, then toggle delay on/off to hear the echo       */
-        /* ============================================================ */
-        else if (t_in_demo >= 65.0f && t_in_demo < 75.0f) {
+        /* TODO: read ADC dials and update master_volume / master_filter /
+         * master_delay_mix in g_state. Until that lands the master
+         * effects use whatever shared_state_init() set. */
 
-            if (t_in_demo < 65.05f) {
-                synth_defaults();
-                ESP_LOGI(TAG, "");
-                ESP_LOGI(TAG, "====== DEMO 6: DELAY EFFECT (65-75s) ======");
-                ESP_LOGI(TAG, "  65-67s: Staccato notes WITHOUT delay");
-                ESP_LOGI(TAG, "  67-70s: Silence — listen for no echo");
-                ESP_LOGI(TAG, "  70-72s: Same notes WITH delay enabled");
-                ESP_LOGI(TAG, "  72-75s: Silence — hear the echo tail");
-            }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
 
-            if (shared_state_lock()) {
-                g_state.mode = MODE_SYNTH;
 
-                /* Staccato: short notes every 500ms */
-                int phase_ms = (int)((t_in_demo - 65.0f) * 1000.0f);
+#endif /* INTEGRATION_MODE */
 
-                if (t_in_demo < 67.0f) {
-                    /* Notes WITHOUT delay */
-                    if (phase_ms < 2000 && (phase_ms % 500) < 150) {
-                        g_state.tracks[0].pitch = 72;  /* C5 */
-                        g_state.tracks[0].volume = 0.7f;
-                    } else {
-                        g_state.tracks[0].volume = 0.0f;
-                    }
+/* ================================================================== */
+/* Master FX wiring                                                    */
+/* ================================================================== */
+/* The mixer reads master_volume directly each cycle. The biquad
+ * filter is wired as a master FX in slot 0; we attach the global
+ * `master_filter` cutoff here (the value can be changed later from
+ * either mode without re-wiring). */
 
-                    /* Make sure delay is off */
-                    if (!s_delay_active) {
-                        /* already off */
-                    } else {
-                        mixer_set_master_fx(0, NULL, NULL);
-                        s_delay_active = false;
-                        ESP_LOGI(TAG, "  >> Delay OFF");
-                    }
-                }
-                else if (t_in_demo < 70.0f) {
-                    /* Silence gap — no echo because delay was off */
-                    g_state.tracks[0].volume = 0.0f;
+static biquad_t s_master_biquad;
 
-                    /* Turn delay ON partway through the silence */
-                    if (t_in_demo >= 69.5f && !s_delay_active) {
-                        mixer_set_master_fx(0, fx_delay, &s_master_delay);
-                        s_delay_active = true;
-                        ESP_LOGI(TAG, "  >> Delay ON (300ms, feedback=0.3)");
-                    }
-                }
-                else if (t_in_demo < 72.0f) {
-                    /* Same staccato notes WITH delay */
-                    int p2 = (int)((t_in_demo - 70.0f) * 1000.0f);
-                    if ((p2 % 500) < 150) {
-                        g_state.tracks[0].pitch = 72;
-                        g_state.tracks[0].volume = 0.7f;
-                    } else {
-                        g_state.tracks[0].volume = 0.0f;
-                    }
-                }
-                else {
-                    /* Silence — hear the delay tail ring out */
-                    g_state.tracks[0].volume = 0.0f;
-                }
+static void master_fx_init(void)
+{
+    biquad_init_lpf(&s_master_biquad,
+                    /*cutoff=*/2000.0f,
+                    /*q=*/0.707f,
+                    /*sample_rate=*/(float)SAMPLE_RATE);
+    mixer_set_master_fx(0, fx_biquad, &s_master_biquad);
 
-                shared_state_unlock();
-            }
+    size_t psram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    if (psram > 0) {
+        if (delay_init(&s_master_delay,
+                       /*delay_ms=*/280.0f,
+                       /*feedback=*/0.35f,
+                       /*mix=*/0.0f,           /* start dry */
+                       /*sr=*/(float)SAMPLE_RATE)) {
+            s_master_delay_ready = true;
+            mixer_set_master_fx(1, fx_delay, &s_master_delay);
         }
-
-        /* ============================================================ */
-        /* DEMO 7: Multi-track mixing (75-90s)                          */
-        /* Synth pad + drum beat playing simultaneously                  */
-        /* ============================================================ */
-        else if (t_in_demo >= 75.0f && t_in_demo < 90.0f) {
-
-            if (t_in_demo < 75.05f) {
-                ESP_LOGI(TAG, "");
-                ESP_LOGI(TAG, "====== DEMO 7: MULTI-TRACK MIX (75-90s) ======");
-                ESP_LOGI(TAG, "  Synth pad + drum pattern playing together");
-                ESP_LOGI(TAG, "  Mixer accumulates both sources cleanly");
-
-                /* Turn delay back on for the finale */
-                if (!s_delay_active) {
-                    mixer_set_master_fx(0, fx_delay, &s_master_delay);
-                    s_delay_active = true;
-                }
-            }
-
-            if (shared_state_lock()) {
-                g_state.mode = MODE_SYNTH;  /* synth voice active */
-                g_state.master_volume = 0.7f;
-
-                /* Synth pad: slow chord progression */
-                float prog_t = (t_in_demo - 75.0f) / 15.0f;
-                int chord_idx = (int)(prog_t * 4.0f) % 4;
-                uint8_t chord_notes[] = {60, 64, 65, 67};  /* C E F G */
-                g_state.tracks[0].pitch = chord_notes[chord_idx];
-                g_state.tracks[0].volume = 0.4f;
-                g_state.tracks[0].waveform_mix = 0.5f;
-                g_state.tracks[0].detune = 2.0f;
-                g_state.tracks[0].lfo_rate = 3.0f;
-                g_state.tracks[0].filter_cutoff = 1200.0f;
-
-                /* Drum pattern on top (same 120 BPM kick-hihat-snare-hihat) */
-                int beat_ms = (int)((t_in_demo - 75.0f) * 1000.0f) % 1000;
-                int sub_beat = beat_ms / 250;
-                int ms_in_sub = beat_ms % 250;
-                if (ms_in_sub < TICK_MS) {
-                    g_state.drum.slot = (sub_beat == 0) ? 0 :
-                                        (sub_beat == 2) ? 1 : 2;
-                    g_state.drum.velocity = (sub_beat == 0 || sub_beat == 2) ? 200 : 130;
-                    g_state.drum.trigger = true;
-                }
-
-                if ((tick * TICK_MS) % 4000 == 0)
-                    ESP_LOGI(TAG, "  >> Chord: %s | Drums active | Delay on",
-                             chord_idx == 0 ? "C" :
-                             chord_idx == 1 ? "E" :
-                             chord_idx == 2 ? "F" : "G");
-
-                shared_state_unlock();
-            }
-        }
-
-        /* ============================================================ */
-        /* Loop reset                                                    */
-        /* ============================================================ */
-        else if (t_in_demo >= 90.0f) {
-            demo_cycle++;
-            ESP_LOGI(TAG, "");
-            ESP_LOGI(TAG, "====== DEMO COMPLETE — looping back ======");
-            ESP_LOGI(TAG, "  Blocks processed so far, pool health: %d/%d",
-                     audio_pool_available(), POOL_SIZE);
-            ESP_LOGI(TAG, "");
-        }
-
-        /* Advance */
-        tick++;
-        vTaskDelay(pdMS_TO_TICKS(TICK_MS));
+    } else {
+        ESP_LOGW(TAG, "No PSRAM detected — delay effect disabled");
     }
 }
 
@@ -442,63 +412,81 @@ void app_main(void)
 {
     ESP_LOGI(TAG, "");
     ESP_LOGI(TAG, "================================================");
-    ESP_LOGI(TAG, "  AURA-SYNTH — 90-Second Audio Demo");
-    ESP_LOGI(TAG, "  Connect DAC + speaker/headphones to hear");
+#ifdef DEMO_MODE
+    ESP_LOGI(TAG, "  AURA-SYNTH — DEMO_MODE (ToF + cycling instr.)");
+#else
+    ESP_LOGI(TAG, "  AURA-SYNTH — INTEGRATION_MODE");
+#endif
     ESP_LOGI(TAG, "================================================");
     ESP_LOGI(TAG, "Free heap: %lu bytes", (unsigned long)esp_get_free_heap_size());
+    ESP_LOGI(TAG, "PSRAM: %lu KB",
+             (unsigned long)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024));
 
-    size_t psram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
-    if (psram > 0) {
-        ESP_LOGI(TAG, "PSRAM: %lu KB", (unsigned long)(psram / 1024));
-    }
-
-    /* 1. Shared state */
+    /* 1. Shared state (creates the mutex AND the note-event queue) */
     shared_state_init();
-    ESP_LOGI(TAG, "[1/6] Shared state OK");
+    ESP_LOGI(TAG, "[1/8] Shared state OK");
 
     /* 2. Block pool */
     if (!audio_pool_init()) { ESP_LOGE(TAG, "Block pool failed"); return; }
-    ESP_LOGI(TAG, "[2/6] Block pool OK");
+    ESP_LOGI(TAG, "[2/8] Block pool OK");
 
     /* 3. I2S */
     if (!i2s_output_init()) { ESP_LOGE(TAG, "I2S failed"); return; }
-    ESP_LOGI(TAG, "[3/6] I2S OK");
+    ESP_LOGI(TAG, "[3/8] I2S OK");
 
-    /* 4. Sampler */
+    /* 4. Sampler + WAVs */
     sampler_init();
-    sampler_register(0, "kick",  kick_wav_start,  kick_wav_end);
-    sampler_register(1, "snare", snare_wav_start, snare_wav_end);
-    sampler_register(2, "hihat", hihat_wav_start, hihat_wav_end);
-    ESP_LOGI(TAG, "[4/6] Sampler OK — 3 samples loaded");
+    register_all_samples();
+    ESP_LOGI(TAG, "[4/8] Sampler OK");
 
-    /* 5. Mixer */
+    /* 5. Mixer + master FX */
     mixer_init((float)SAMPLE_RATE);
-    /* Delay starts OFF — Demo 6 will toggle it */
-    if (psram > 0) {
-        delay_init(&s_master_delay, 300.0f, 0.35f, 0.3f, (float)SAMPLE_RATE);
+    master_fx_init();
+    ESP_LOGI(TAG, "[5/8] Mixer OK (master FX wired%s)",
+             s_master_delay_ready ? ", delay armed" : "");
+
+    /* 6. Loop recorder (PSRAM-only). Future feature; safe to init now. */
+    if (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) > 0) {
+        loop_recorder_init();
     }
-    s_delay_active = false;
-    ESP_LOGI(TAG, "[5/6] Mixer OK — delay prepared but OFF");
+    ESP_LOGI(TAG, "[6/8] Loop recorder OK");
 
-    /* 6. Loop recorder */
-    if (psram > 0) { loop_recorder_init(); }
-    ESP_LOGI(TAG, "[6/6] Loop recorder OK");
+    /* 7. LED hardware (needed before sensor init so ready status can
+     * illuminate per-sensor chunks during startup). */
+    if (!led_task_init()) {
+        ESP_LOGW(TAG, "[7/8] LEDs NOT ready");
+    } else {
+        led_task_boot_clear();
+        ESP_LOGI(TAG, "[7/8] LEDs OK");
+    }
 
-    ESP_LOGI(TAG, "Heap after init: %lu bytes",
-             (unsigned long)esp_get_free_heap_size());
+    /* 8. Sensors. During init each "ToF ready" log lights one LED chunk.
+     * After all sensors are processed: full-strip white flash then clear. */
+    if (!sensor_task_init()) {
+        ESP_LOGW(TAG, "[8/8] Sensors NOT ready — silent gesture input");
+    } else {
+        led_task_boot_flash_white(120, 250);
+        led_task_boot_clear();
+        sensor_task_start();
+        ESP_LOGI(TAG, "[8/8] Sensors OK");
+    }
 
-    /* Launch audio pipeline on Core 1 */
-    xTaskCreatePinnedToCore(
-        audio_task_run, "audio", 8192, NULL,
-        configMAX_PRIORITIES - 1, NULL, 1);
+    /* Start normal LED rendering once boot animation is complete. */
+    led_task_start();
 
-    /* Launch demo sequence on Core 0 */
-    xTaskCreatePinnedToCore(
-        demo_task, "demo", 4096, NULL,
-        5, NULL, 0);
+    /* Audio pipeline on Core 1 — highest priority */
+    xTaskCreatePinnedToCore(audio_task_run, "audio", 8192, NULL,
+                            configMAX_PRIORITIES - 1, NULL, 1);
+
+#ifdef DEMO_MODE
+    xTaskCreatePinnedToCore(demo_mode_task, "demo_cycle", 3072, NULL,
+                            4, NULL, 0);
+#else
+    xTaskCreatePinnedToCore(integration_mode_task, "integ", 4096, NULL,
+                            4, NULL, 0);
+#endif
 
     ESP_LOGI(TAG, "");
-    ESP_LOGI(TAG, "  Demo starting in 1 second...");
-    ESP_LOGI(TAG, "  Follow the serial log to know what you're hearing.");
-    ESP_LOGI(TAG, "");
+    ESP_LOGI(TAG, "Boot complete — swipe across the ToF array to play.");
 }
+
