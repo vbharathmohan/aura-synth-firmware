@@ -54,8 +54,8 @@ static const char *TAG = "THEREMIN_PRO";
 
 // ── Shift Register Pins ──────────────────────────────
 #define SHIFT_SER GPIO_NUM_14
-#define SHIFT_SRCLK GPIO_NUM_12
-#define SHIFT_RCLK GPIO_NUM_13
+#define SHIFT_SRCLK GPIO_NUM_15
+#define SHIFT_RCLK GPIO_NUM_32
 
 // ── Hardware Pin Map ─────────────────────────────────
 #define I2C_SDA_PIN (gpio_num_t)22

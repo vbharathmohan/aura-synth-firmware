@@ -27,8 +27,8 @@
  */
 
 /* ====================== MODE SELECT ============================== */
-#define DEMO_MODE
-/* #define INTEGRATION_MODE */
+/* #define DEMO_MODE*/
+#define INTEGRATION_MODE 
 /* ================================================================== */
 
 #if defined(DEMO_MODE) && defined(INTEGRATION_MODE)
@@ -150,31 +150,55 @@ static void demo_mode_task(void *param)
 
         vTaskDelay(pdMS_TO_TICKS(DEMO_INSTRUMENT_PERIOD_MS));
         idx = (idx + 1) % N;
+    
+        #ifdef INTEGRATION_MODE
+
+        static int last_print_us = 0;
+
+        if ((now - last_print_us) > 200000) {  // every 200ms
+            int b0 = gpio_get_level(BTN_PAD_0_PIN);
+            int b1 = gpio_get_level(BTN_PAD_1_PIN);
+            int b2 = gpio_get_level(BTN_PAD_2_PIN);
+            int b3 = gpio_get_level(BTN_PAD_3_PIN);
+            int bt = gpio_get_level(BTN_PAD_TOGGLE_PIN);
+
+            ESP_LOGI(TAG,
+                "[BTN RAW] PAD0=%d PAD1=%d PAD2=%d PAD3=%d TOGGLE=%d",
+                b0, b1, b2, b3, bt
+            );
+
+            last_print_us = now;
+        }
+        #endif        
+    
     }
 }
 
-#endif /* DEMO_MODE */
+#endif 
+ /* DEMO_MODE */
 
 /* ================================================================== */
 /* INTEGRATION MODE                                                    */
 /* ================================================================== */
 #ifdef INTEGRATION_MODE
 
-/* These pin assignments are placeholders — fill in once the front
- * panel is wired. The user reserved pins 12, 13, 14 for the shift
- * register and the I2C / I2S pins are fixed; everything else on
- * the ESP32 GPIO map is fair game. */
-#define BTN_PAD_0_PIN           GPIO_NUM_15  /* piano  / kick  */
-#define BTN_PAD_1_PIN           GPIO_NUM_16  /* steel  / hihat */
-#define BTN_PAD_2_PIN           GPIO_NUM_17  /* trump  / clap  */
-#define BTN_PAD_3_PIN           GPIO_NUM_18  /* 808    / snare */
-#define BTN_PAD_TOGGLE_PIN      GPIO_NUM_19  /* instr <-> drums */
-/* Prompt 2 transport buttons (active-low, pull-up enabled). */
-#define BTN_REC_PIN             GPIO_NUM_21  /* record / stop recording */
-#define BTN_CLEAR_PIN           GPIO_NUM_23  /* clear active track */
-#define BTN_PLAY_PAUSE_PIN      GPIO_NUM_27  /* play / pause */
-/* Prompt 3: single button cycles active track 0->1->2->3->0 */
-#define BTN_TRACK_CYCLE_PIN     GPIO_NUM_32
+/* === ROUND 1 PIN ASSIGNMENTS (Feather V2) ===
+ * Testing: 4 pad buttons + pad toggle.
+ * GPIO 38 = onboard button (has pull-up).
+ * GPIO 34/36/37/39 = input-only pins (need external 10K pull-up to 3.3V).
+ */
+#define BTN_PAD_0_PIN           GPIO_NUM_36  /* piano  / kick   (A4, ext pull-up) */
+#define BTN_PAD_1_PIN           GPIO_NUM_39  /* steel  / hihat  (A3, ext pull-up) */
+#define BTN_PAD_2_PIN           GPIO_NUM_34  /* trump  / clap   (A2, ext pull-up) */
+#define BTN_PAD_3_PIN           GPIO_NUM_37  /* 808    / snare  (D37, ext pull-up) */
+#define BTN_PAD_TOGGLE_PIN      GPIO_NUM_38  /* instr <-> drums (onboard button) */
+
+/* Transport buttons — DISABLED for Round 1. Set to -1 so they
+ * never match any real GPIO read and the code safely does nothing. */
+#define BTN_REC_PIN             GPIO_NUM_NC
+#define BTN_CLEAR_PIN           GPIO_NUM_NC
+#define BTN_PLAY_PAUSE_PIN      GPIO_NUM_NC
+#define BTN_TRACK_CYCLE_PIN     GPIO_NUM_NC     
 
 /* Master FX controls (analog reads / encoder) */
 #define DIAL_VOLUME_ADC         ADC1_CHANNEL_0  /* placeholder */
@@ -201,19 +225,26 @@ static const instrument_t s_pad_instrument[NUM_DRUM_PADS] = {
 
 static void integration_buttons_init(void)
 {
+    /* GPIO 38 has an onboard pull-up. GPIO 34/36/37/39 are input-only
+     * and CANNOT use internal pull-ups — you MUST wire external 10K
+     * resistors from each pin to 3.3V on the breadboard. */
     gpio_config_t io = {0};
     io.mode         = GPIO_MODE_INPUT;
-    io.pull_up_en   = GPIO_PULLUP_ENABLE;
+    io.pull_up_en   = GPIO_PULLUP_DISABLE;  /* external pull-ups used */
     io.pull_down_en = GPIO_PULLDOWN_DISABLE;
     io.intr_type    = GPIO_INTR_DISABLE;
+
+    /* Only configure the pins we're actually using in this round.
+     * Round 1: pad buttons + toggle. */
     io.pin_bit_mask =
         (1ULL << BTN_PAD_0_PIN) | (1ULL << BTN_PAD_1_PIN) |
         (1ULL << BTN_PAD_2_PIN) | (1ULL << BTN_PAD_3_PIN) |
-        (1ULL << BTN_PAD_TOGGLE_PIN) |
-        (1ULL << BTN_REC_PIN) | (1ULL << BTN_CLEAR_PIN) |
-        (1ULL << BTN_PLAY_PAUSE_PIN) |
-        (1ULL << BTN_TRACK_CYCLE_PIN);
+        (1ULL << BTN_PAD_TOGGLE_PIN);
     gpio_config(&io);
+
+    ESP_LOGI(TAG, "Buttons init: PAD0=%d PAD1=%d PAD2=%d PAD3=%d TOGGLE=%d",
+             BTN_PAD_0_PIN, BTN_PAD_1_PIN, BTN_PAD_2_PIN,
+             BTN_PAD_3_PIN, BTN_PAD_TOGGLE_PIN);
 }
 
 static void integration_mode_task(void *param)
@@ -337,6 +368,7 @@ static void integration_mode_task(void *param)
     }
 }
 
+
 #endif /* INTEGRATION_MODE */
 
 /* ================================================================== */
@@ -457,3 +489,4 @@ void app_main(void)
     ESP_LOGI(TAG, "");
     ESP_LOGI(TAG, "Boot complete — swipe across the ToF array to play.");
 }
+

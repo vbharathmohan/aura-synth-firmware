@@ -25,3 +25,5 @@ target_compile_definitions(${COMPONENT_TARGET}
 target_compile_options(${COMPONENT_TARGET}
     PRIVATE -mlongcalls
 )
+
+target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-absolute-value)
