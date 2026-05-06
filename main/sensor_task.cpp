@@ -33,6 +33,7 @@
 #include "sensor_task.h"
 #include "shared_state.h"
 #include "led_task.h"
+#include "panel_input.h"
 
 #include <math.h>
 #include <string.h>
@@ -402,6 +403,8 @@ static void sensor_polling_task(void *)
 
             VL53L0X_ClearInterruptMask(dev, 0);
         }
+
+        panel_input_poll();
 
         vTaskDelay(pdMS_TO_TICKS(SENSOR_POLL_MS));
     }

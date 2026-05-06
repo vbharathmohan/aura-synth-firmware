@@ -11,14 +11,14 @@
  *       walks through one octave of C-major in the active instrument.
  *
  *   INTEGRATION_MODE
- *       Four physical buttons select instruments OR drum pads (a
- *       fifth button toggles between the two functions). Three
- *       master-bus controls map to volume / biquad filter cutoff /
- *       delay mix. ToFs always play the currently selected instrument.
+ *       3×3 button matrix + two sliders + one pot (see panel_input.c
+ *       for GPIO map). Pads select instrument or drums; transport
+ *       keys drive loop recorder; sliders set master volume / filter /
+ *       delay mix. ToFs play the selected instrument. Panel is polled
+ *       from the same task as the VL53L0X sensors.
  *
- * Only DEMO_MODE is fully implemented today — INTEGRATION_MODE has
- * scaffolding (button task, pin map, dial reads) so it compiles and
- * is easy to flesh out next. The seam in both modes is the same:
+ * DEMO_MODE omits the front panel; INTEGRATION_MODE initializes it at
+ * boot. The seam in both modes is the same:
  * everything that produces sound goes through the note-event queue,
  * which keeps the loop-recorder feature (planned next) trivial to
  * slot in later.
@@ -27,8 +27,8 @@
  */
 
 /* ====================== MODE SELECT ============================== */
-#define DEMO_MODE
-/* #define INTEGRATION_MODE */
+// #define DEMO_MODE
+#define INTEGRATION_MODE
 /* ================================================================== */
 
 #if defined(DEMO_MODE) && defined(INTEGRATION_MODE)
@@ -45,7 +45,6 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
-#include "driver/gpio.h"
 
 #include "shared_state.h"
 #include "audio_block.h"
@@ -57,6 +56,9 @@
 #include "effects.h"
 #include "sensor_task.h"
 #include "led_task.h"
+#ifdef INTEGRATION_MODE
+#include "panel_input.h"
+#endif
 
 static const char *TAG = "aura_synth";
 
@@ -156,212 +158,6 @@ static void demo_mode_task(void *param)
 #endif /* DEMO_MODE */
 
 /* ================================================================== */
-/* INTEGRATION MODE                                                    */
-/* ================================================================== */
-#ifdef INTEGRATION_MODE
-
-/* These pin assignments are placeholders — fill in once the front
- * panel is wired. The user reserved pins 12, 13, 14 for the shift
- * register and the I2C / I2S pins are fixed; everything else on
- * the ESP32 GPIO map is fair game. */
-#define BTN_PAD_0_PIN           GPIO_NUM_36  /* piano  / kick  */
-#define BTN_PAD_1_PIN           GPIO_NUM_39  /* steel  / hihat */
-#define BTN_PAD_2_PIN           GPIO_NUM_34  /* trump  / clap  */
-#define BTN_PAD_3_PIN           GPIO_NUM_37  /* 808    / snare */
-#define BTN_PAD_TOGGLE_PIN      GPIO_NUM_38  /* instr <-> drums */
-/* Prompt 2 transport buttons (active-low, pull-up enabled). */
-#define BTN_REC_PIN             GPIO_NUM_NC  /* record / stop recording */
-#define BTN_CLEAR_PIN           GPIO_NUM_NC  /* clear active track */
-#define BTN_PLAY_PAUSE_PIN      GPIO_NUM_NC  /* play / pause */
-/* Prompt 3: single button cycles active track 0->1->2->3->0 */
-#define BTN_TRACK_CYCLE_PIN     GPIO_NUM_NC
-
-/* Master FX controls (analog reads / encoder) */
-#define DIAL_VOLUME_ADC         ADC1_CHANNEL_0  /* placeholder */
-#define DIAL_FILTER_ADC         ADC1_CHANNEL_3  /* placeholder */
-#define DIAL_DELAY_ADC          ADC1_CHANNEL_6  /* placeholder */
-
-#define BTN_DEBOUNCE_US         50000
-
-/** Skip NC pins: (1ULL << GPIO_NUM_NC) is undefined and can break gpio_config. */
-static uint64_t integration_pin_mask_add(uint64_t mask, gpio_num_t pin)
-{
-    if (pin == GPIO_NUM_NC) {
-        return mask;
-    }
-    return mask | (1ULL << pin);
-}
-
-/** Active-low buttons with pull-up: unassigned pin reads as released (high). */
-static int integration_gpio_level(gpio_num_t pin)
-{
-    if (pin == GPIO_NUM_NC) {
-        return 1;
-    }
-    return gpio_get_level(pin);
-}
-
-static const int s_pad_pins[NUM_DRUM_PADS] = {
-    BTN_PAD_0_PIN, BTN_PAD_1_PIN, BTN_PAD_2_PIN, BTN_PAD_3_PIN,
-};
-
-/* Drum slots in the same physical order as the buttons.
- * (User-specified mapping: kick / hihat / clap / snare.) */
-static const uint8_t s_pad_drum_slot[NUM_DRUM_PADS] = {
-    SAMPLE_SLOT_KICK,  SAMPLE_SLOT_HIHAT,
-    SAMPLE_SLOT_CLAP,  SAMPLE_SLOT_SNARE,
-};
-
-/* Instruments in the same physical order as the buttons. */
-static const instrument_t s_pad_instrument[NUM_DRUM_PADS] = {
-    INST_PIANO, INST_STEEL_DRUM, INST_TRUMPET, INST_808_BASS,
-};
-
-static void integration_buttons_init(void)
-{
-    gpio_config_t io = {0};
-    io.mode         = GPIO_MODE_INPUT;
-    io.pull_up_en   = GPIO_PULLUP_ENABLE;
-    io.pull_down_en = GPIO_PULLDOWN_DISABLE;
-    io.intr_type    = GPIO_INTR_DISABLE;
-    uint64_t mask = 0;
-    mask = integration_pin_mask_add(mask, BTN_PAD_0_PIN);
-    mask = integration_pin_mask_add(mask, BTN_PAD_1_PIN);
-    mask = integration_pin_mask_add(mask, BTN_PAD_2_PIN);
-    mask = integration_pin_mask_add(mask, BTN_PAD_3_PIN);
-    mask = integration_pin_mask_add(mask, BTN_PAD_TOGGLE_PIN);
-    mask = integration_pin_mask_add(mask, BTN_REC_PIN);
-    mask = integration_pin_mask_add(mask, BTN_CLEAR_PIN);
-    mask = integration_pin_mask_add(mask, BTN_PLAY_PAUSE_PIN);
-    mask = integration_pin_mask_add(mask, BTN_TRACK_CYCLE_PIN);
-    io.pin_bit_mask = mask;
-    gpio_config(&io);
-}
-
-static void integration_mode_task(void *param)
-{
-    (void)param;
-    ESP_LOGI(TAG, "integration_mode_task on core %d", xPortGetCoreID());
-    ESP_LOGW(TAG, "INTEGRATION_MODE button & dial handling is a stub.");
-
-    integration_buttons_init();
-
-    bool prev_pad[NUM_DRUM_PADS] = {true, true, true, true};
-    bool prev_toggle = true;
-    bool prev_rec = true;
-    bool prev_clear = true;
-    bool prev_play = true;
-    bool prev_track = true;
-    int64_t last_edge_us[NUM_DRUM_PADS + 5] = {0}; /* pads + toggle + rec/clear/play/track */
-
-    while (1) {
-        int64_t now = (int64_t)xTaskGetTickCount() * portTICK_PERIOD_MS * 1000;
-
-        /* Read the toggle button (pad mode switch) */
-        bool toggle_now = gpio_get_level(BTN_PAD_TOGGLE_PIN) != 0;
-        if (!toggle_now && prev_toggle &&
-            (now - last_edge_us[NUM_DRUM_PADS]) > BTN_DEBOUNCE_US) {
-            if (shared_state_lock()) {
-                g_state.pad_mode = (g_state.pad_mode == PAD_INSTRUMENTS)
-                                    ? PAD_DRUMS : PAD_INSTRUMENTS;
-                shared_state_unlock();
-            }
-            last_edge_us[NUM_DRUM_PADS] = now;
-            ESP_LOGI(TAG, "Pad mode -> %s",
-                     g_state.pad_mode == PAD_DRUMS ? "DRUMS" : "INSTRUMENTS");
-        }
-        prev_toggle = toggle_now;
-
-        /* Transport buttons (Prompt 2) */
-        bool rec_now = integration_gpio_level(BTN_REC_PIN) != 0;
-        if (!rec_now && prev_rec &&
-            (now - last_edge_us[NUM_DRUM_PADS + 1]) > BTN_DEBOUNCE_US) {
-            if (shared_state_lock()) {
-                g_state.record_pressed = true;
-                shared_state_unlock();
-            }
-            last_edge_us[NUM_DRUM_PADS + 1] = now;
-            ESP_LOGI(TAG, "Transport: REC toggle");
-        }
-        prev_rec = rec_now;
-
-        bool clr_now = integration_gpio_level(BTN_CLEAR_PIN) != 0;
-        if (!clr_now && prev_clear &&
-            (now - last_edge_us[NUM_DRUM_PADS + 2]) > BTN_DEBOUNCE_US) {
-            if (shared_state_lock()) {
-                g_state.clear_pressed = true;
-                shared_state_unlock();
-            }
-            last_edge_us[NUM_DRUM_PADS + 2] = now;
-            ESP_LOGI(TAG, "Transport: CLEAR");
-        }
-        prev_clear = clr_now;
-
-        bool play_now = integration_gpio_level(BTN_PLAY_PAUSE_PIN) != 0;
-        if (!play_now && prev_play &&
-            (now - last_edge_us[NUM_DRUM_PADS + 3]) > BTN_DEBOUNCE_US) {
-            if (shared_state_lock()) {
-                g_state.play_pause_pressed = true;
-                shared_state_unlock();
-            }
-            last_edge_us[NUM_DRUM_PADS + 3] = now;
-            ESP_LOGI(TAG, "Transport: PLAY/PAUSE");
-        }
-        prev_play = play_now;
-
-        /* Prompt 3: cycle active track with one button */
-        bool track_now = integration_gpio_level(BTN_TRACK_CYCLE_PIN) != 0;
-        if (!track_now && prev_track &&
-            (now - last_edge_us[NUM_DRUM_PADS + 4]) > BTN_DEBOUNCE_US) {
-            int next_track = 0;
-            if (shared_state_lock()) {
-                next_track = (g_state.active_track + 1) % NUM_TRACKS;
-                g_state.active_track = (uint8_t)next_track;
-                shared_state_unlock();
-            }
-            last_edge_us[NUM_DRUM_PADS + 4] = now;
-            ESP_LOGI(TAG, "Transport: TRACK -> %d", next_track);
-        }
-        prev_track = track_now;
-
-        /* Read the four pad buttons */
-        for (int i = 0; i < NUM_DRUM_PADS; i++) {
-            bool now_pressed = gpio_get_level(s_pad_pins[i]) == 0; /* active-low */
-            bool was_pressed = !prev_pad[i];
-
-            if (now_pressed && !was_pressed &&
-                (now - last_edge_us[i]) > BTN_DEBOUNCE_US) {
-                if (g_state.pad_mode == PAD_DRUMS) {
-                    /* Trigger drum directly */
-                    note_event_post(s_pad_drum_slot[i],
-                                    /*velocity=*/200,
-                                    /*speed=*/1.0f,
-                                    /*loop=*/false,
-                                    /*source=*/(int8_t)(10 + i));
-                } else {
-                    /* Switch active instrument */
-                    if (shared_state_lock()) {
-                        g_state.active_instrument = s_pad_instrument[i];
-                        shared_state_unlock();
-                    }
-                    ESP_LOGI(TAG, "Active instrument -> %d", (int)s_pad_instrument[i]);
-                }
-                last_edge_us[i] = now;
-            }
-            prev_pad[i] = !now_pressed;
-        }
-
-        /* TODO: read ADC dials and update master_volume / master_filter /
-         * master_delay_mix in g_state. Until that lands the master
-         * effects use whatever shared_state_init() set. */
-
-        vTaskDelay(pdMS_TO_TICKS(10));
-    }
-}
-
-#endif /* INTEGRATION_MODE */
-
-/* ================================================================== */
 /* Master FX wiring                                                    */
 /* ================================================================== */
 /* The mixer reads master_volume directly each cycle. The biquad
@@ -450,6 +246,11 @@ void app_main(void)
         ESP_LOGI(TAG, "[7/8] LEDs OK");
     }
 
+#ifdef INTEGRATION_MODE
+    panel_input_init();
+    ESP_LOGI(TAG, "[7b/8] Front panel (matrix + ADC) OK — see panel_input.c GPIO map");
+#endif
+
     /* 8. Sensors. During init each "ToF ready" log lights one LED chunk.
      * After all sensors are processed: full-strip white flash then clear. */
     if (!sensor_task_init()) {
@@ -472,8 +273,7 @@ void app_main(void)
     xTaskCreatePinnedToCore(demo_mode_task, "demo_cycle", 3072, NULL,
                             4, NULL, 0);
 #else
-    xTaskCreatePinnedToCore(integration_mode_task, "integ", 4096, NULL,
-                            4, NULL, 0);
+    /* INTEGRATION_MODE: pads + ADC run inside sensor_task (panel_input_poll). */
 #endif
 
     ESP_LOGI(TAG, "");
