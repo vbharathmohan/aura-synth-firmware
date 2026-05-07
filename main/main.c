@@ -27,21 +27,13 @@
  */
 
 /* ====================== MODE SELECT ============================== */
-<<<<<<<<< Temporary merge branch 1
 /* #define DEMO_MODE*/
 #define INTEGRATION_MODE 
-=========
-// #define DEMO_MODE
-#define INTEGRATION_MODE
->>>>>>>>> Temporary merge branch 2
 /* ================================================================== */
 
 #if defined(DEMO_MODE) && defined(INTEGRATION_MODE)
-#error "Pick exactly one of DEMO_MODE / INTEGRATION_MODE"
 #endif
-#if !defined(DEMO_MODE) && !defined(INTEGRATION_MODE)
-#error "Pick exactly one of DEMO_MODE / INTEGRATION_MODE"
-#endif
+
 
 #include <stdio.h>
 #include <math.h>
@@ -185,7 +177,7 @@ static void demo_mode_task(void *param)
 #endif /* DEMO_MODE */
 
 /* ================================================================== */
-<<<<<<<<< Temporary merge branch 1
+
 /* INTEGRATION MODE                                                    */
 /* ================================================================== */
 #ifdef INTEGRATION_MODE
@@ -370,8 +362,7 @@ static void integration_mode_task(void *param)
 #endif /* INTEGRATION_MODE */
 
 /* ================================================================== */
-=========
->>>>>>>>> Temporary merge branch 2
+
 /* Master FX wiring                                                    */
 /* ================================================================== */
 /* The mixer reads master_volume directly each cycle. The biquad

@@ -11,11 +11,11 @@
  *           GPIO 7        GPIO 21      GPIO 19
  *         (RX)          (MISO)       (MOSI)
  *              |             |             |
- *   ROW0(15)--[BTN0]-------[BTN1]-------[BTN2]--   Pad0 / Pad1 / Pad2
+ *   ROW0(15)--[BTN0]-------[BTN1]-------[BTN2]--   Pad0 R0C0 / Pad1 R2C0 / Pad2 R1C0
  *              |             |             |
- *   ROW1(32)--[BTN3]-------[BTN4]-------[BTN5]--   Pad3 / PadTog / Record
+ *   ROW1(32)--[BTN3]-------[BTN4]-------[BTN5]--   Pad3 R0C1 / PadTog R2C1  / Record R1C1
  *              |             |             |
- *   ROW2(5)---[BTN6]-------[BTN7]-------[BTN8]--   Clear / Play / TrkCycle
+ *   ROW2(5)---[BTN6]-------[BTN7]-------[BTN8]--   Clear R0C2 / Play R2C2 / TrkCycle R1C2
  *
  *   ROW pins: OUTPUT, idle HIGH; scan pulls one row LOW at a time.
  *   COL pins: INPUT + internal pull-up; LOW = button ties col to active row.
