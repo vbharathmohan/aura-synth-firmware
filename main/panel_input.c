@@ -7,23 +7,54 @@
  *
  * MATRIX (each button connects ROW to COL when pressed; no common ground):
  *
- *              COL0          COL1          COL2
- *           GPIO 7        GPIO 21      GPIO 19
- *         (RX)          (MISO)       (MOSI)
- *              |             |             |
- *   ROW0(15)--[BTN0]-------[BTN1]-------[BTN2]--   Pad0 R0C0 / Pad1 R2C0 / Pad2 R1C0
- *              |             |             |
- *   ROW1(32)--[BTN3]-------[BTN4]-------[BTN5]--   Pad3 R0C1 / PadTog R2C1  / Record R1C1
- *              |             |             |
- *   ROW2(5)---[BTN6]-------[BTN7]-------[BTN8]--   Clear R0C2 / Play R2C2 / TrkCycle R1C2
+ *              COL0           COL1           COL2
+ *           GPIO 7         GPIO 21        GPIO 19
+ *           (RX)           (MISO)         (MOSI)
+ *              |              |              |
+ *   ROW0(15)--[BTN0]--------[BTN1]---------[BTN2]--
+ *              |              |              |
+ *   ROW1(32)--[BTN3]--------[BTN4]---------[BTN5]--
+ *              |              |              |
+ *   ROW2(5)---[BTN6]--------[BTN7]---------[BTN8]--
+ *
+ * Physical matrix currently wired as:
+ *   Row 0: kick / clap / clear
+ *   Row 1: hihat / track cycle / play-pause
+ *   Row 2: snare / cycle mode / record-stop
+ *
+ * Reconciled logical actions (desired UX) mapped onto those physical buttons:
+ *   BTN0 (R0C0 kick)        -> kick (DRUMS only)
+ *   BTN6 (R2C0 snare)       -> snare (DRUMS only)
+ *   BTN3 (R1C0 hihat)       -> hi-hat (DRUMS only)
+ *   BTN1 (R0C1 clap)        -> clap (DRUMS) / cycle instrument (SAMPLE)
+ *   BTN7 (R2C1 cycle mode)  -> cycle global mode (sample -> drums -> synth)
+ *   BTN4 (R1C1 track cycle) -> cycle active track
+ *   BTN2 (R0C2 clear)       -> clear track
+ *   BTN8 (R2C2 record-stop) -> record toggle
+ *   BTN5 (R1C2 play-pause)  -> play/pause
+ *
+ *   Drum-pad buttons (BTN0/1/2 and BTN3-as-clap) only fire when the global
+ *   mode is MODE_DRUMS. BTN3 cycles instruments when the global mode is
+ *   MODE_SAMPLE; in MODE_SYNTH it does nothing. Transport buttons (Row 2,
+ *   BTN4, BTN5) are always active.
  *
  *   ROW pins: OUTPUT, idle HIGH; scan pulls one row LOW at a time.
  *   COL pins: INPUT + internal pull-up; LOW = button ties col to active row.
  *
  * ANALOG (middle wiper → GPIO; ends → 3.3 V and GND):
- *   Slider 1 (master volume):   GPIO 34  (A2)  ADC1_CH6
- *   Slider 2 (master filter):   GPIO 39  (A3)  ADC1_CH3
- *   Pot      (master delay mix): GPIO 36  (A4)  ADC1_CH0
+ *   Slider 1 (GPIO 34, A2): master volume 0 .. 1
+ *   Slider 2 (GPIO 39, A3): pitch bend -1 .. +1 semitone (center = in tune)
+ *   Dial — filter (GPIO 36, A4): master LPF cutoff (see MASTER_FILTER_*)
+ *   Dial — LFO    (GPIO 37):     0 .. 10 Hz
+ *   Dial — reverb (GPIO 35):     0 .. 1 (wet / echo depth)
+ *
+ *   Why not GPIO 38: on Feather V2, 38 is the **USER** button (digital), not a
+ *   spare analog input. On ESP32-WROOM, ADC1 is only on 32–39; after matrix
+ *   (32), LED (33), sliders (34, 39), filter+LFO (36, 37), the only remaining
+ *   ADC1 pin is **35** (Feather silk: often VBAT sense). Use it for the reverb
+ *   pot only if your hardware routes it as a normal ADC line (do not parallel
+ *   an external pot with the stock battery divider without a design review).
+ *   Pins 16–18 / 8 / 23 are **not** ADC-capable on ESP32.
  *
  * RESERVED ELSEWHERE (do not use for matrix):
  *   4,25,26 = I2S; 20,22 = I2C ToF; 12,13,14 = 74HC595; 27 = XSMT; 33 = WS2812
@@ -57,9 +88,11 @@ static const char *TAG = "panel_input";
 #define COL1_PIN    GPIO_NUM_21
 #define COL2_PIN    GPIO_NUM_19
 
-#define SLIDER1_ADC_CHANNEL   ADC_CHANNEL_6   /* GPIO 34 */
-#define SLIDER2_ADC_CHANNEL   ADC_CHANNEL_3   /* GPIO 39 */
-#define POT_ADC_CHANNEL       ADC_CHANNEL_0   /* GPIO 36 */
+#define SLIDER_VOL_ADC_CHANNEL    ADC_CHANNEL_6   /* GPIO 34 — volume */
+#define SLIDER_BEND_ADC_CHANNEL   ADC_CHANNEL_3   /* GPIO 39 — ±1 semitone bend */
+#define DIAL_FILTER_ADC_CHANNEL   ADC_CHANNEL_0   /* GPIO 36, A4 — filter */
+#define DIAL_LFO_ADC_CHANNEL      ADC_CHANNEL_1   /* GPIO 37 — LFO */
+#define DIAL_REVERB_ADC_CHANNEL   ADC_CHANNEL_7   /* GPIO 35 — reverb (see file header) */
 
 #define NUM_ROWS    3
 #define NUM_COLS    3
@@ -74,12 +107,23 @@ static const char *TAG = "panel_input";
 static const gpio_num_t ROW_PINS[NUM_ROWS] = { ROW0_PIN, ROW1_PIN, ROW2_PIN };
 static const gpio_num_t COL_PINS[NUM_COLS] = { COL0_PIN, COL1_PIN, COL2_PIN };
 
-static const uint8_t s_pad_drum_slot[NUM_DRUM_PADS] = {
-    SAMPLE_SLOT_KICK,  SAMPLE_SLOT_HIHAT,
-    SAMPLE_SLOT_CLAP,  SAMPLE_SLOT_SNARE,
+/* Drum-pad mapping for the new matrix layout.
+ *   Row 0 buttons (BTN0/1/2) + BTN3 (when in MODE_DRUMS) form a 4-pad bank.
+ *   Index within this array is the button slot, NOT the matrix btn_idx. */
+#define DRUM_PAD_KICK    0
+#define DRUM_PAD_SNARE   1
+#define DRUM_PAD_HIHAT   2
+#define DRUM_PAD_CLAP    3
+
+static const uint8_t s_drum_pad_slot[NUM_DRUM_PADS] = {
+    SAMPLE_SLOT_KICK,
+    SAMPLE_SLOT_SNARE,
+    SAMPLE_SLOT_HIHAT,
+    SAMPLE_SLOT_CLAP,
 };
 
-static const instrument_t s_pad_instrument[NUM_DRUM_PADS] = {
+/* SAMPLE-mode instrument cycle order for the physical clap button (BTN1). */
+static const instrument_t s_instrument_cycle[NUM_INSTRUMENTS] = {
     INST_PIANO, INST_STEEL_DRUM, INST_TRUMPET, INST_808_BASS,
 };
 
@@ -92,9 +136,11 @@ static adc_oneshot_unit_handle_t s_adc;
 static bool     s_inited;
 static int64_t  s_last_scan_us;
 
-static float    s_vol_ema;
-static float    s_filt_ema;
-static float    s_dly_ema;
+static float    s_vol_ema;     /* slider1 → master volume */
+static float    s_bend_ema;    /* slider2 → pitch bend (normalized; 0.5 = center) */
+static float    s_filt_ema;    /* dial GPIO36 → LPF cutoff */
+static float    s_lfo_ema;     /* dial → LFO Hz */
+static float    s_rvb_ema;     /* dial → reverb */
 
 static void matrix_gpio_init(void)
 {
@@ -163,12 +209,48 @@ static void adc_hw_init(void)
         .bitwidth = ADC_BITWIDTH_12,
         .atten    = ADC_ATTEN_DB_12,
     };
-    ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, SLIDER1_ADC_CHANNEL, &chan_cfg));
-    ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, SLIDER2_ADC_CHANNEL, &chan_cfg));
-    ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, POT_ADC_CHANNEL, &chan_cfg));
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, SLIDER_VOL_ADC_CHANNEL, &chan_cfg));
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, SLIDER_BEND_ADC_CHANNEL, &chan_cfg));
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, DIAL_FILTER_ADC_CHANNEL, &chan_cfg));
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, DIAL_LFO_ADC_CHANNEL, &chan_cfg));
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, DIAL_REVERB_ADC_CHANNEL, &chan_cfg));
 
-    ESP_LOGI(TAG, "ADC: slider1=GPIO34 ch%d | slider2=GPIO39 ch%d | pot=GPIO36 ch%d",
-             SLIDER1_ADC_CHANNEL, SLIDER2_ADC_CHANNEL, POT_ADC_CHANNEL);
+    ESP_LOGI(TAG,
+             "ADC: vol=GPIO34 ch%d | bend=GPIO39 ch%d | filt=GPIO36 ch%d | "
+             "lfo=GPIO37 ch%d | rvb=GPIO35 ch%d",
+             SLIDER_VOL_ADC_CHANNEL, SLIDER_BEND_ADC_CHANNEL, DIAL_FILTER_ADC_CHANNEL,
+             DIAL_LFO_ADC_CHANNEL, DIAL_REVERB_ADC_CHANNEL);
+}
+
+/* Cycle order for physical cycle-mode button (BTN7): SAMPLE -> DRUMS -> SYNTH -> SAMPLE. */
+static instrument_mode_t next_global_mode(instrument_mode_t cur)
+{
+    switch (cur) {
+    case MODE_SAMPLE: return MODE_DRUMS;
+    case MODE_DRUMS:  return MODE_SYNTH;
+    case MODE_SYNTH:  return MODE_SAMPLE;
+    default:          return MODE_SAMPLE;
+    }
+}
+
+static const char *mode_name(instrument_mode_t m)
+{
+    switch (m) {
+    case MODE_SAMPLE: return "SAMPLE";
+    case MODE_DRUMS:  return "DRUMS";
+    case MODE_SYNTH:  return "SYNTH";
+    case MODE_PIANO:  return "PIANO";
+    case MODE_FX:     return "FX";
+    default:          return "?";
+    }
+}
+
+static void fire_drum_pad(int pad_idx)
+{
+    if (pad_idx < 0 || pad_idx >= NUM_DRUM_PADS) return;
+    note_event_post(s_drum_pad_slot[pad_idx],
+                    /*velocity=*/200, /*speed=*/1.0f, /*loop=*/false,
+                    /*source=*/(int8_t)(10 + pad_idx));
 }
 
 static void handle_button_edges(void)
@@ -182,62 +264,94 @@ static void handle_button_edges(void)
             continue;
         }
 
-        /* Pads 0–3 */
-        if (i < NUM_DRUM_PADS) {
-            int idx = i;
-            if (g_state.pad_mode == PAD_DRUMS) {
-                note_event_post(s_pad_drum_slot[idx], 200, 1.0f, false,
-                                (int8_t)(10 + idx));
-            } else {
-                if (shared_state_lock()) {
-                    g_state.active_instrument = s_pad_instrument[idx];
-                    shared_state_unlock();
-                }
-                ESP_LOGI(TAG, "Instrument -> %d", (int)s_pad_instrument[idx]);
-            }
-            continue;
-        }
+        instrument_mode_t mode = g_state.mode;
 
         switch (i) {
-        case 4: /* PadTog */
-            if (shared_state_lock()) {
-                g_state.pad_mode = (g_state.pad_mode == PAD_INSTRUMENTS)
-                                       ? PAD_DRUMS
-                                       : PAD_INSTRUMENTS;
-                shared_state_unlock();
+        case 0: /* Row0 Col0: Kick */
+            if (mode == MODE_DRUMS) {
+                fire_drum_pad(DRUM_PAD_KICK);
+                ESP_LOGI(TAG, "Drum: KICK");
             }
-            ESP_LOGI(TAG, "Pad mode -> %s",
-                     g_state.pad_mode == PAD_DRUMS ? "DRUMS" : "INSTRUMENTS");
             break;
-        case 5: /* Record */
-            if (shared_state_lock()) {
-                g_state.record_pressed = true;
-                shared_state_unlock();
+
+        case 2: /* Row0 Col1: Clap / cycle instrument */
+            if (mode == MODE_DRUMS) {
+                fire_drum_pad(DRUM_PAD_CLAP);
+                ESP_LOGI(TAG, "Drum: CLAP");
+            } else if (mode == MODE_SAMPLE) {
+                instrument_t next_inst = INST_PIANO;
+                if (shared_state_lock()) {
+                    int cur = (int)g_state.active_instrument;
+                    next_inst = s_instrument_cycle[(cur + 1) % NUM_INSTRUMENTS];
+                    g_state.active_instrument = next_inst;
+                    shared_state_unlock();
+                }
+                ESP_LOGI(TAG, "Instrument -> %d", (int)next_inst);
             }
-            ESP_LOGI(TAG, "Transport: REC");
             break;
-        case 6: /* Clear */
+
+        case 1: /* Row0 Col2: Clear track */
             if (shared_state_lock()) {
                 g_state.clear_pressed = true;
                 shared_state_unlock();
             }
             ESP_LOGI(TAG, "Transport: CLEAR");
             break;
-        case 7: /* Play */
+
+        case 6: /* Row1 Col0: Hihat */
+            if (mode == MODE_DRUMS) {
+                fire_drum_pad(DRUM_PAD_HIHAT);
+                ESP_LOGI(TAG, "Drum: HIHAT");
+            }
+            break;
+
+        case 8: /* Row1 Col1: Cycle track */
+            {
+                int new_track = 0;
+                if (shared_state_lock()) {
+                    new_track = (g_state.active_track + 1) % NUM_TRACKS;
+                    g_state.active_track = (uint8_t)new_track;
+                    shared_state_unlock();
+                }
+                ESP_LOGI(TAG, "Track -> %d", new_track);
+            }
+            break;
+
+        case 7: /* Row1 Col2: Play/pause */
             if (shared_state_lock()) {
                 g_state.play_pause_pressed = true;
                 shared_state_unlock();
             }
             ESP_LOGI(TAG, "Transport: PLAY/PAUSE");
             break;
-        case 8: /* TrkCycle */
+
+        case 3: /* Row2 Col0: Snare */
+            if (mode == MODE_DRUMS) {
+                fire_drum_pad(DRUM_PAD_SNARE);
+                ESP_LOGI(TAG, "Drum: SNARE");
+            }
+            break;
+
+        case 5: /* Row2 Col1: Cycle mode */
+            {
+                instrument_mode_t new_mode = MODE_SAMPLE;
+                if (shared_state_lock()) {
+                    new_mode = next_global_mode(g_state.mode);
+                    g_state.mode = new_mode;
+                    shared_state_unlock();
+                }
+                ESP_LOGI(TAG, "Mode -> %s", mode_name(new_mode));
+            }
+            break;
+
+        case 4: /* Row2 Col2: Record/stop recording */
             if (shared_state_lock()) {
-                g_state.active_track =
-                    (uint8_t)((g_state.active_track + 1) % NUM_TRACKS);
+                g_state.record_pressed = true;
                 shared_state_unlock();
             }
-            ESP_LOGI(TAG, "Track -> %d", (int)g_state.active_track);
+            ESP_LOGI(TAG, "Transport: REC");
             break;
+
         default:
             break;
         }
@@ -246,45 +360,68 @@ static void handle_button_edges(void)
 
 static void read_analog_and_apply(void)
 {
-    int raw1 = 0, raw2 = 0, rawp = 0;
-    if (adc_oneshot_read(s_adc, SLIDER1_ADC_CHANNEL, &raw1) != ESP_OK) {
+    int rv = 0, rr = 0, rf = 0, rl = 0, rb = 0;
+    if (adc_oneshot_read(s_adc, SLIDER_VOL_ADC_CHANNEL, &rv) != ESP_OK) {
         return;
     }
-    if (adc_oneshot_read(s_adc, SLIDER2_ADC_CHANNEL, &raw2) != ESP_OK) {
+    if (adc_oneshot_read(s_adc, SLIDER_BEND_ADC_CHANNEL, &rr) != ESP_OK) {
         return;
     }
-    if (adc_oneshot_read(s_adc, POT_ADC_CHANNEL, &rawp) != ESP_OK) {
+    if (adc_oneshot_read(s_adc, DIAL_FILTER_ADC_CHANNEL, &rf) != ESP_OK) {
+        return;
+    }
+    if (adc_oneshot_read(s_adc, DIAL_LFO_ADC_CHANNEL, &rl) != ESP_OK) {
+        return;
+    }
+    if (adc_oneshot_read(s_adc, DIAL_REVERB_ADC_CHANNEL, &rb) != ESP_OK) {
         return;
     }
 
-    if (raw1 < 0) {
-        raw1 = 0;
+    if (rv < 0) {
+        rv = 0;
     }
-    if (raw2 < 0) {
-        raw2 = 0;
+    if (rr < 0) {
+        rr = 0;
     }
-    if (rawp < 0) {
-        rawp = 0;
+    if (rf < 0) {
+        rf = 0;
+    }
+    if (rl < 0) {
+        rl = 0;
+    }
+    if (rb < 0) {
+        rb = 0;
     }
 
-    float n1 = fminf(1.0f, (float)raw1 / 4095.0f);
-    float n2 = fminf(1.0f, (float)raw2 / 4095.0f);
-    float np = fminf(1.0f, (float)rawp / 4095.0f);
+    float nv = fminf(1.0f, (float)rv / 4095.0f);
+    float nr = fminf(1.0f, (float)rr / 4095.0f);
+    float nf = fminf(1.0f, (float)rf / 4095.0f);
+    float nl = fminf(1.0f, (float)rl / 4095.0f);
+    float nb = fminf(1.0f, (float)rb / 4095.0f);
 
     const float a = 0.25f;
-    s_vol_ema  += (n1 - s_vol_ema) * a;
-    s_filt_ema += (n2 - s_filt_ema) * a;
-    s_dly_ema  += (np - s_dly_ema) * a;
+    s_vol_ema  += (nv - s_vol_ema) * a;
+    s_bend_ema += (nr - s_bend_ema) * a;
+    s_filt_ema += (nf - s_filt_ema) * a;
+    s_lfo_ema  += (nl - s_lfo_ema) * a;
+    s_rvb_ema  += (nb - s_rvb_ema) * a;
 
-    float vol   = s_vol_ema;
-    float f_hz  = MASTER_FILTER_MIN_HZ +
-                  s_filt_ema * (MASTER_FILTER_MAX_HZ - MASTER_FILTER_MIN_HZ);
-    float d_mix = s_dly_ema;
+    float vol = s_vol_ema;
+    /* Slider2: pitch bend -1 .. +1 semitone (center = 0.5 normalized) */
+    float bend_sem = (s_bend_ema - 0.5f) * 2.0f;
+    float lfo_hz = s_lfo_ema * 10.0f;
+    float reverb = s_rvb_ema;
+    float f_hz   = MASTER_FILTER_MIN_HZ +
+                   s_filt_ema * (MASTER_FILTER_MAX_HZ - MASTER_FILTER_MIN_HZ);
 
     if (shared_state_lock()) {
-        g_state.master_volume    = vol;
-        g_state.master_filter    = f_hz;
-        g_state.master_delay_mix = d_mix;
+        g_state.master_volume         = vol;
+        g_state.master_filter         = f_hz;
+        g_state.master_playback_rate  = 1.0f;
+        g_state.master_detune_sem     = bend_sem;
+        g_state.master_lfo_hz         = lfo_hz;
+        g_state.master_reverb         = reverb;
+        g_state.master_delay_mix      = reverb; /* legacy */
         shared_state_unlock();
     }
 }
@@ -299,9 +436,11 @@ void panel_input_init(void)
     memset(btn_raw, 0, sizeof(btn_raw));
     memset(btn_debounce, 0, sizeof(btn_debounce));
     memset(btn_prev, 0, sizeof(btn_prev));
-    s_vol_ema  = 0.5f;
+    s_vol_ema  = 0.85f;
+    s_bend_ema = 0.5f; /* pitch bend 0 semitones */
     s_filt_ema = 0.5f;
-    s_dly_ema  = 0.0f;
+    s_lfo_ema  = 0.0f;
+    s_rvb_ema  = 0.0f;
     s_last_scan_us = 0;
 
     matrix_gpio_init();

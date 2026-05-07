@@ -16,6 +16,10 @@
 #include <math.h>
 #include "esp_log.h"
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846f
+#endif
+
 static const char *TAG = "mixer";
 
 /* ------------------------------------------------------------------ */
@@ -33,6 +37,8 @@ static void     *s_track_fx_params[NUM_TRACKS][MAX_TRACK_FX];
 /* Master effects chain */
 static effect_fn s_master_fx[MAX_MASTER_FX];
 static void     *s_master_fx_params[MAX_MASTER_FX];
+
+static float s_master_lfo_phase;
 
 /* ------------------------------------------------------------------ */
 /* Init                                                                */
@@ -57,6 +63,7 @@ bool mixer_init(float sample_rate)
     memset(s_track_fx_params, 0, sizeof(s_track_fx_params));
     memset(s_master_fx, 0, sizeof(s_master_fx));
     memset(s_master_fx_params, 0, sizeof(s_master_fx_params));
+    s_master_lfo_phase = 0.0f;
 
     /* Wire up the default per-track effect: biquad LP filter in slot 0 */
     for (int i = 0; i < NUM_TRACKS; i++) {
@@ -139,14 +146,15 @@ audio_block_t *mixer_process(const shared_state_t *snap)
 
     /* --- Process drum/piano triggers --- */
     if (snap->drum.trigger) {
+        float gspd = shared_state_sample_speed_scale(snap);
         if (snap->mode == MODE_PIANO) {
             /* Piano: pitch-shift a base sample. Slot 8 = piano base.
              * Map piano_note (0-7) to speed via semitone ratio. */
-            float speed = powf(2.0f, (float)snap->drum.slot / 12.0f);
+            float speed = powf(2.0f, (float)snap->drum.slot / 12.0f) * gspd;
             sampler_trigger(8, snap->drum.velocity, speed, false);
         } else {
             /* Drums work in ANY mode — so synth + drums can play together */
-            sampler_trigger(snap->drum.slot, snap->drum.velocity, 1.0f, false);
+            sampler_trigger(snap->drum.slot, snap->drum.velocity, gspd, false);
         }
     }
 
@@ -155,6 +163,28 @@ audio_block_t *mixer_process(const shared_state_t *snap)
 
     /* --- Apply master volume --- */
     audio_block_gain(mix, snap->master_volume);
+
+    /* --- Master LFO tremolo (“womp”) — 0..10 Hz from panel --- */
+    float lfo_hz = snap->master_lfo_hz;
+    if (lfo_hz < 0.0f) {
+        lfo_hz = 0.0f;
+    }
+    if (lfo_hz > 10.0f) {
+        lfo_hz = 10.0f;
+    }
+    if (lfo_hz > 0.02f) {
+        float depth = (lfo_hz / 10.0f) * 0.38f;
+        const float inc = 2.0f * M_PI * lfo_hz / s_sample_rate;
+        for (int i = 0; i < BLOCK_SAMPLES; i++) {
+            float mod = 1.0f - depth * (0.5f + 0.5f * sinf(s_master_lfo_phase));
+            mix->L[i] = (int32_t)((float)mix->L[i] * mod);
+            mix->R[i] = (int32_t)((float)mix->R[i] * mod);
+            s_master_lfo_phase += inc;
+            if (s_master_lfo_phase > 2.0f * M_PI) {
+                s_master_lfo_phase -= 2.0f * M_PI;
+            }
+        }
+    }
 
     /* --- Sync master FX parameters from shared state (panel sliders) --- */
     if (s_master_fx[0] != NULL && s_master_fx_params[0] != NULL &&
@@ -165,14 +195,16 @@ audio_block_t *mixer_process(const shared_state_t *snap)
     if (s_master_fx[1] != NULL && s_master_fx_params[1] != NULL &&
         s_master_fx[1] == fx_delay) {
         delay_t *dly = (delay_t *)s_master_fx_params[1];
-        float m = snap->master_delay_mix;
-        if (m < 0.0f) {
-            m = 0.0f;
+        float r = snap->master_reverb;
+        if (r < 0.0f) {
+            r = 0.0f;
         }
-        if (m > 1.0f) {
-            m = 1.0f;
+        if (r > 1.0f) {
+            r = 1.0f;
         }
-        dly->mix = m;
+        /* Short slap when low; stronger feedback when high (~3–4 audible repeats). */
+        dly->mix      = r * 0.88f;
+        dly->feedback = 0.06f + r * 0.44f;
     }
 
     /* --- Apply master effects chain --- */

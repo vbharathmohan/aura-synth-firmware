@@ -43,9 +43,23 @@ void audio_task_run(void *param)
     int block_count = 0;
     int control_counter = 0;
 
+    /* Transport press flags accumulate across audio cycles. shared_state_snapshot()
+     * consumes the global flags every call (~172 Hz), but loop_recorder_update()
+     * only runs once per CONTROL_DIVIDER blocks (~86 Hz). Without this latch,
+     * presses that land on a non-control cycle would be silently dropped. */
+    bool pending_record = false;
+    bool pending_clear = false;
+    bool pending_play_pause = false;
+
     while (1) {
         /* 1. Snapshot shared state (consumes one-shot triggers) */
         shared_state_snapshot(&snap);
+
+        /* Latch transport edges from this cycle so they survive until
+         * the next loop_recorder_update() call. */
+        if (snap.record_pressed)     pending_record = true;
+        if (snap.clear_pressed)      pending_clear = true;
+        if (snap.play_pause_pressed) pending_play_pause = true;
 
         /* 2. Drain the note-event queue. Producers are sensor_task,
          * the integration-mode button task, and (later) the loop
@@ -59,7 +73,8 @@ void audio_task_run(void *param)
                    xQueueReceive(g_note_queue, &evt, 0) == pdTRUE) {
                 /* Recorder captures only live user events (not loop playback). */
                 loop_recorder_on_live_event(&evt);
-                sampler_trigger(evt.slot, evt.velocity, evt.speed, evt.loop);
+                float spd = evt.speed * shared_state_sample_speed_scale(&snap);
+                sampler_trigger(evt.slot, evt.velocity, spd, evt.loop);
                 drained++;
             }
         }
@@ -68,6 +83,16 @@ void audio_task_run(void *param)
         control_counter++;
         if (control_counter >= CONTROL_DIVIDER) {
             control_counter = 0;
+
+            /* Hand the latched press edges to the recorder. Clear the
+             * latches only after the recorder has had a chance to act. */
+            snap.record_pressed     = pending_record;
+            snap.clear_pressed      = pending_clear;
+            snap.play_pause_pressed = pending_play_pause;
+            pending_record = false;
+            pending_clear = false;
+            pending_play_pause = false;
+
             loop_recorder_update(&snap);
 
             /* Write transport state back to global shared state */

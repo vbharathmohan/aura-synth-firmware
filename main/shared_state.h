@@ -65,10 +65,11 @@ extern "C" {
 /* ------------------------------------------------------------------ */
 
 typedef enum {
-    MODE_SYNTH = 0,
-    MODE_DRUMS = 1,
-    MODE_PIANO = 2,
-    MODE_FX    = 3,
+    MODE_SYNTH  = 0,
+    MODE_DRUMS  = 1,
+    MODE_PIANO  = 2,
+    MODE_FX     = 3,
+    MODE_SAMPLE = 4,    /* default: ToF strikes trigger sampled instruments */
     MODE_COUNT
 } instrument_mode_t;
 
@@ -168,9 +169,13 @@ typedef struct {
     track_params_t tracks[NUM_TRACKS];
 
     /* --- Master bus --- */
-    float    master_volume;      /* 0.0 - 1.0 */
-    float    master_filter;      /* master LPF cutoff Hz (panel / automation) */
-    float    master_delay_mix;   /* 0.0 = dry, 1.0 = full wet */
+    float    master_volume;      /* 0.0 - 1.0 (panel slider 1 / GPIO 34) */
+    float    master_filter;      /* master LPF cutoff Hz (biquad; filter dial / GPIO 36) */
+    float    master_delay_mix;   /* legacy alias: kept in sync with master_reverb */
+    float    master_playback_rate; /* global speed mult; panel keeps 1.0 (reserved) */
+    float    master_detune_sem;    /* ±1 semitone pitch bend (panel slider 2 / GPIO 39) */
+    float    master_lfo_hz;        /* 0..10 Hz tremolo (LFO dial / GPIO 37) */
+    float    master_reverb;        /* 0..1 wet echo / reverb (reverb dial / GPIO 35) */
 
     /* --- Drum triggers (one-shot, consumed by Core 1) --- */
     drum_trigger_t drum;
@@ -181,8 +186,8 @@ typedef struct {
     bool     play_pause_pressed; /* edge-detected by Core 0, consumed once */
     bool     is_recording;       /* current state (managed by loop_recorder) */
     bool     is_playing;         /* current state (managed by loop_recorder) */
-    int      loop_length;        /* 0 = no loop set yet */
-    int      playhead;           /* current position in the loop */
+    int      loop_length;        /* milliseconds; 0 = no loop set yet */
+    int      playhead;           /* current loop position in milliseconds */
 
 } shared_state_t;
 
@@ -232,6 +237,12 @@ extern SemaphoreHandle_t g_state_mutex;
 
 /** Initialize with sensible defaults. Call once from app_main(). */
 void shared_state_init(void);
+
+/**
+ * Panel playback rate (0.5–2×) × detune (±1 semitone) as a speed multiplier
+ * for sampler triggers. Safe on a snapshot or &g_state.
+ */
+float shared_state_sample_speed_scale(const shared_state_t *snap);
 
 /** Lock (up to 10ms timeout). Returns true if acquired. */
 static inline bool shared_state_lock(void) {

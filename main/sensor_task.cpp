@@ -24,10 +24,9 @@
  *   - Per-instrument retrigger lock-out so a single fast swipe doesn't
  *     re-fire on the next 22 ms tick.
  *
- * Threading: this whole file is one producer task; it only writes the
- * shared state through the note-event queue and reads g_state via a
- * snapshot, so we don't touch g_state_mutex inside the hot polling
- * loop.
+ * Threading: this whole file is one producer task. Sample/drum gestures
+ * post to g_note_queue only. MODE_SYNTH updates g_state.tracks[active_track]
+ * once per poll under shared_state_lock() (not on every sensor IRQ).
  */
 
 #include "sensor_task.h"
@@ -37,6 +36,7 @@
 
 #include <math.h>
 #include <string.h>
+#include <cstdint>
 #include <atomic>
 
 #include "freertos/FreeRTOS.h"
@@ -129,6 +129,15 @@ static const float SCALE_SPEED[NUM_TOF_SENSORS] = {
     1.887748625363386f,         /* B   (+11 st)  */
     2.0f,                       /* C   (+octave) */
 };
+
+/* MODE_SYNTH: same C-major degrees as SCALE_SPEED — MIDI notes for synth_voice. */
+static const uint8_t SYNTH_C_MAJOR_MIDI[NUM_TOF_SENSORS] = {
+    60, 62, 64, 65, 67, 69, 71, 72,   /* C4 .. C5 */
+};
+
+/* Hand height (range mm) → synth volume; farther = louder (higher above sensor). */
+#define SYNTH_VOL_MM_MIN        160
+#define SYNTH_VOL_MM_MAX        420
 
 struct swipe_state_t {
     uint16_t prev_dist_mm;
@@ -266,6 +275,68 @@ static bool update_gliss_state_on_crossing(int idx, int64_t now_us)
     return s_gliss.active;
 }
 
+/**
+ * MODE_SYNTH: drive active_track synth params from ToF — sine voice, C major by
+ * sensor index, volume from hand height (range reading) on the closest active cell.
+ */
+static void synth_tof_apply_gesture(void)
+{
+    if (!shared_state_lock()) {
+        return;
+    }
+
+    if (g_state.mode != MODE_SYNTH) {
+        shared_state_unlock();
+        return;
+    }
+
+    int tr = (int)g_state.active_track;
+    if (tr < 0 || tr >= NUM_TRACKS) {
+        tr = 0;
+    }
+
+    int best_idx   = -1;
+    uint16_t best_d = UINT16_MAX;
+
+    for (int i = 0; i < NUM_TOF_SENSORS; i++) {
+        uint16_t d = s_last_dist_mm[i].load();
+        if (d == 0 || d > DIST_RANGE_MAX) {
+            continue;
+        }
+        if (d < 40) {
+            continue;
+        }
+        if (d < best_d) {
+            best_d = d;
+            best_idx = i;
+        }
+    }
+
+    track_params_t *tp = &g_state.tracks[tr];
+    tp->waveform_mix  = 0.0f;   /* pure sine */
+    tp->pitch_bend    = g_state.master_detune_sem * 0.5f; /* ±1 st panel bend → voice ±2 st scale */
+
+    if (best_idx < 0) {
+        tp->volume = 0.0f;
+        shared_state_unlock();
+        return;
+    }
+
+    tp->pitch = SYNTH_C_MAJOR_MIDI[best_idx];
+
+    float t = ((float)best_d - (float)SYNTH_VOL_MM_MIN) /
+              (float)(SYNTH_VOL_MM_MAX - SYNTH_VOL_MM_MIN);
+    if (t < 0.0f) {
+        t = 0.0f;
+    }
+    if (t > 1.0f) {
+        t = 1.0f;
+    }
+    tp->volume = t;
+
+    shared_state_unlock();
+}
+
 /** Update per-sensor state with one new reading and (maybe) post a
  *  note event. Returns true if a note was triggered. */
 static bool process_reading(int idx, uint16_t distance_mm, int64_t now_us)
@@ -278,6 +349,13 @@ static bool process_reading(int idx, uint16_t distance_mm, int64_t now_us)
         st.prev_time_us = now_us;
         st.smoothed_speed_mmps = 0.0f;
         st.armed = true;          /* clearly above ARM */
+        return false;
+    }
+
+    /* Synth mode: continuous pitch/volume from gestures — no sample triggers. */
+    if (g_state.mode == MODE_SYNTH) {
+        st.prev_dist_mm = distance_mm;
+        st.prev_time_us = now_us;
         return false;
     }
 
@@ -403,6 +481,8 @@ static void sensor_polling_task(void *)
 
             VL53L0X_ClearInterruptMask(dev, 0);
         }
+
+        synth_tof_apply_gesture();
 
         panel_input_poll();
 

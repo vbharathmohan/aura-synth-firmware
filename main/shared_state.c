@@ -5,6 +5,7 @@
 #include "shared_state.h"
 #include <string.h>
 #include <assert.h>
+#include <math.h>
 #include "esp_log.h"
 
 static const char *TAG = "shared_state";
@@ -24,10 +25,11 @@ void shared_state_init(void)
     memset(&g_state, 0, sizeof(g_state));
 
     /* Mode & transport.
-     * MODE_DRUMS keeps the synth_voice rendering path disabled so the
-     * mixer only spends CPU on the sampler — which is the only source
-     * we use in the gesture instrument. */
-    g_state.mode               = MODE_DRUMS;
+     * MODE_SAMPLE is the default: ToF strikes trigger sampled instruments
+     * and the synth_voice render path stays disabled (synth_active in
+     * mixer.c gates on MODE_SYNTH) so the mixer only spends CPU on the
+     * sampler when not in synth mode. */
+    g_state.mode               = MODE_SAMPLE;
     g_state.active_track       = 0;
     g_state.master_view        = false;
 
@@ -47,9 +49,13 @@ void shared_state_init(void)
     }
 
     /* Master bus */
-    g_state.master_volume     = 1.0f;
-    g_state.master_filter     = 2000.0f;
-    g_state.master_delay_mix  = 0.0f;          /* delay disabled by default */
+    g_state.master_volume          = 1.0f;
+    g_state.master_filter          = 2000.0f;
+    g_state.master_delay_mix       = 0.0f;
+    g_state.master_playback_rate   = 1.0f;
+    g_state.master_detune_sem      = 0.0f;
+    g_state.master_lfo_hz          = 0.0f;
+    g_state.master_reverb          = 0.0f;
 
     /* Loop recorder */
     g_state.is_recording = false;
@@ -59,6 +65,28 @@ void shared_state_init(void)
 
     ESP_LOGI(TAG, "shared_state_init: queue depth=%d, instrument=PIANO",
              NOTE_QUEUE_DEPTH);
+}
+
+float shared_state_sample_speed_scale(const shared_state_t *snap)
+{
+    if (snap == NULL) {
+        return 1.0f;
+    }
+    float pb = snap->master_playback_rate;
+    if (pb < 0.5f) {
+        pb = 0.5f;
+    }
+    if (pb > 2.0f) {
+        pb = 2.0f;
+    }
+    float du = snap->master_detune_sem;
+    if (du < -1.0f) {
+        du = -1.0f;
+    }
+    if (du > 1.0f) {
+        du = 1.0f;
+    }
+    return pb * powf(2.0f, du / 12.0f);
 }
 
 bool note_event_post(uint8_t slot, uint8_t velocity, float speed,
