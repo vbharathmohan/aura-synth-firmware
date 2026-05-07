@@ -175,7 +175,9 @@ typedef struct {
     float    master_playback_rate; /* global speed mult; panel keeps 1.0 (reserved) */
     float    master_detune_sem;    /* ±1 semitone pitch bend (panel slider 2 / GPIO 39) */
     float    master_lfo_hz;        /* 0..10 Hz tremolo (LFO dial / GPIO 37) */
-    float    master_reverb;        /* 0..1 wet — panel currently forces 0 (no reverb knob) */
+    /** 0 = sine, 1 = saw (wave-morph dial; GPIO 35 today, mux “wave” channel later). */
+    float    master_waveform_mix;
+    float    master_reverb;        /* 0..1 wet — forced 0 until echo mux channel wired */
 
     /* --- Drum triggers (one-shot, consumed by Core 1) --- */
     drum_trigger_t drum;
@@ -195,39 +197,37 @@ typedef struct {
 /* Note event queue                                                    */
 /* ------------------------------------------------------------------ */
 /* Many-producers / one-consumer queue of one-shot triggers.            */
-/* Producers (sensor_task, button_task, loop playback) post events;    */
-/* the audio task drains each block → sampler_trigger() and/or synth   */
-/* keyframe apply (MODE_SYNTH + NOTE_SOURCE_SYNTH_LAYER / tape).       */
-/*                                                                     */
-/* This decouples gesture detection from the audio render path and is  */
-/* ready for the future loop-recorder use case (each event carries     */
-/* enough info to be re-queued from a tape).                           */
+/* Producers post here; audio drains → sampler_trigger() and/or        */
+/* loop_recorder_on_live_event() (synth sustained notes skip sampler).   */
 
-/** Live synth layer keyframes (MODE_SYNTH looper); not fed to sampler. */
-#define NOTE_SOURCE_SYNTH_LAYER   30
+/** Synth looper: one tape entry = start time + pitch + start volume + duration. */
+#define NOTE_SOURCE_SYNTH_NOTE    30
 
 typedef struct {
-    uint8_t  slot;       /* sampler SAMPLE_SLOT_*; or MIDI 60–127 for synth keyframes */
-    uint8_t  velocity;   /* 0-255: sample level or synth volume */
+    uint8_t  slot;       /* sampler SAMPLE_SLOT_*; or MIDI note for NOTE_SOURCE_SYNTH_NOTE */
+    uint8_t  velocity;   /* 0-255: sample level or synth level at note start */
     float    speed;      /* 1.0 = native pitch, 2.0 = +octave, etc. */
     bool     loop;       /* true = loop, false = one-shot */
     int8_t   source;     /* event provenance: -1 unknown,
                             0..7 = ToF sensor index,
                             10..13 = drum pad index 0..3,
                             20 = loop playback,
-                            NOTE_SOURCE_SYNTH_LAYER = synth tape keyframe */
-    uint8_t  track;      /* NUM_TRACKS index for synth keyframes; else ignored */
+                            NOTE_SOURCE_SYNTH_NOTE = sustained synth segment */
+    uint8_t  track;      /* NUM_TRACKS index for synth segments; else 0 */
+    uint32_t duration_us;/* NOTE_SOURCE_SYNTH_NOTE: sustain length; 0 = one-shot */
+    uint32_t tape_time_us;/* If != UINT32_MAX, tape start time (µs); else use ingest clock */
 } note_event_t;
 
 #define NOTE_QUEUE_DEPTH    32
 
 extern QueueHandle_t g_note_queue;
 
-/** Post a note event. Safe to call from any task / any core.
- *  Returns false if the queue is full (the event is dropped).
- *  Designed so the future loop_recorder can also post here. */
+/** Post a one-shot note (duration_us=0, tape_time_us=UINT32_MAX). */
 bool note_event_post(uint8_t slot, uint8_t velocity, float speed,
                      bool loop, int8_t source, uint8_t track);
+
+/** Post a fully populated event (synth segments use duration_us + tape_time_us). */
+bool note_event_post_full(const note_event_t *evt);
 
 /* ------------------------------------------------------------------ */
 /* Global instance + mutex                                             */

@@ -74,25 +74,10 @@ void audio_task_run(void *param)
                 /* Recorder captures only live user events (not loop playback). */
                 loop_recorder_on_live_event(&evt);
 
-                bool synth_kf =
-                    (snap.mode == MODE_SYNTH &&
-                     (evt.source == NOTE_SOURCE_SYNTH_LAYER ||
-                      (evt.source == 20 && evt.slot >= 60 && evt.slot <= 127)));
-                if (synth_kf) {
-                    /* Live layer: sensor_task already wrote g_state for this block
-                     * when recording; skip re-apply to avoid fighting overdub playback. */
-                    bool skip_apply = (evt.source == NOTE_SOURCE_SYNTH_LAYER &&
-                                       snap.is_recording &&
-                                       evt.track == snap.active_track);
-                    if (!skip_apply && evt.track < NUM_TRACKS &&
-                        shared_state_lock()) {
-                        track_params_t *tp = &g_state.tracks[evt.track];
-                        tp->pitch        = evt.slot;
-                        tp->volume       = (float)evt.velocity / 255.0f;
-                        tp->waveform_mix = 0.0f;
-                        tp->pitch_bend   = snap.master_detune_sem * 0.5f;
-                        shared_state_unlock();
-                    }
+                /* Sustained synth segments are tape-driven in sensor_task; only
+                 * the recorder ingests these from the queue (no sampler). */
+                if (evt.source == NOTE_SOURCE_SYNTH_NOTE && evt.duration_us > 0) {
+                    /* no-op */
                 } else {
                     float spd = evt.speed * shared_state_sample_speed_scale(&snap);
                     sampler_trigger(evt.slot, evt.velocity, spd, evt.loop);

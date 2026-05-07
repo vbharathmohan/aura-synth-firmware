@@ -4,6 +4,7 @@
 
 #include "shared_state.h"
 #include <string.h>
+#include <stdint.h>
 #include <assert.h>
 #include <math.h>
 #include "esp_log.h"
@@ -55,6 +56,7 @@ void shared_state_init(void)
     g_state.master_playback_rate   = 1.0f;
     g_state.master_detune_sem      = 0.0f;
     g_state.master_lfo_hz          = 0.0f;
+    g_state.master_waveform_mix  = 0.0f;
     g_state.master_reverb          = 0.0f;
 
     /* Loop recorder */
@@ -92,17 +94,25 @@ float shared_state_sample_speed_scale(const shared_state_t *snap)
 bool note_event_post(uint8_t slot, uint8_t velocity, float speed,
                      bool loop, int8_t source, uint8_t track)
 {
-    if (g_note_queue == NULL) return false;
-
     note_event_t evt = {
-        .slot     = slot,
-        .velocity = velocity,
-        .speed    = speed,
-        .loop     = loop,
-        .source   = source,
-        .track    = track,
+        .slot         = slot,
+        .velocity     = velocity,
+        .speed        = speed,
+        .loop         = loop,
+        .source       = source,
+        .track        = track,
+        .duration_us  = 0,
+        .tape_time_us = UINT32_MAX,
     };
+    return note_event_post_full(&evt);
+}
+
+bool note_event_post_full(const note_event_t *evt)
+{
+    if (g_note_queue == NULL || evt == NULL) {
+        return false;
+    }
     /* Non-blocking: if the audio task is behind, dropping a note is
      * better than blocking the producer (sensor task on Core 1). */
-    return xQueueSend(g_note_queue, &evt, 0) == pdTRUE;
+    return xQueueSend(g_note_queue, evt, 0) == pdTRUE;
 }

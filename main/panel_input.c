@@ -44,12 +44,14 @@
  * ANALOG (middle wiper → GPIO; ends → 3.3 V and GND):
  *   Slider 1 (GPIO 34, A2): master volume 0 .. 1
  *   Slider 2 (GPIO 39, A3): pitch bend -1 .. +1 semitone (center = in tune)
- *   Dial — filter (GPIO 36, A4): master LPF cutoff (see MASTER_FILTER_*)
- *   Dial — LFO    (GPIO 37):     0 .. 10 Hz
+ *   Dial — filter    (GPIO 36, A4): master LPF cutoff (MASTER_FILTER_*)
+ *   Dial — wave morph (GPIO 35):    sine → saw (master_waveform_mix 0 .. 1)
+ *   Dial — LFO       (GPIO 37):     0 .. 10 Hz tremolo
  *
- *   Master reverb / delay is **forced off** in firmware (master_reverb = 0).
- *   A reverb pot on GPIO 35 is not read until hardware is wired and this is
- *   re-enabled. (GPIO 35 is often VBAT on Feather; do not sample it blindly.)
+ *   A multiplexer will eventually bring four panel dials (filter, wave, LFO,
+ *   echo) onto one MCU ADC line — remap channels in this file only when that
+ *   lands. Echo / delay mix stays 0 in firmware until the mux “echo” input
+ *   is wired (GPIO 35 is often VBAT on Feather; use a normal divider wiper).
  *
  * RESERVED ELSEWHERE (do not use for matrix):
  *   4,25,26 = I2S; 20,22 = I2C ToF; 12,13,14 = 74HC595; 27 = XSMT; 33 = WS2812
@@ -87,7 +89,7 @@ static const char *TAG = "panel_input";
 #define SLIDER_BEND_ADC_CHANNEL   ADC_CHANNEL_3   /* GPIO 39 — ±1 semitone bend */
 #define DIAL_FILTER_ADC_CHANNEL   ADC_CHANNEL_0   /* GPIO 36, A4 — filter */
 #define DIAL_LFO_ADC_CHANNEL      ADC_CHANNEL_1   /* GPIO 37 — LFO */
-/* #define DIAL_REVERB_ADC_CHANNEL ADC_CHANNEL_7 */ /* GPIO 35 — reserved; reverb off */
+#define DIAL_WAVEMIX_ADC_CHANNEL  ADC_CHANNEL_7   /* GPIO 35 — sine/saw; mux “wave” later */
 
 #define NUM_ROWS    3
 #define NUM_COLS    3
@@ -135,6 +137,7 @@ static float    s_vol_ema;     /* slider1 → master volume */
 static float    s_bend_ema;    /* slider2 → pitch bend (normalized; 0.5 = center) */
 static float    s_filt_ema;    /* dial GPIO36 → LPF cutoff */
 static float    s_lfo_ema;     /* dial → LFO Hz */
+static float    s_wav_ema;     /* dial GPIO35 → waveform mix */
 
 static void matrix_gpio_init(void)
 {
@@ -207,11 +210,13 @@ static void adc_hw_init(void)
     ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, SLIDER_BEND_ADC_CHANNEL, &chan_cfg));
     ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, DIAL_FILTER_ADC_CHANNEL, &chan_cfg));
     ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, DIAL_LFO_ADC_CHANNEL, &chan_cfg));
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, DIAL_WAVEMIX_ADC_CHANNEL, &chan_cfg));
 
     ESP_LOGI(TAG,
-             "ADC: vol=GPIO34 ch%d | bend=GPIO39 ch%d | filt=GPIO36 ch%d | lfo=GPIO37 ch%d",
+             "ADC: vol=GPIO34 ch%d | bend=GPIO39 ch%d | filt=GPIO36 ch%d | "
+             "lfo=GPIO37 ch%d | wave=GPIO35 ch%d",
              SLIDER_VOL_ADC_CHANNEL, SLIDER_BEND_ADC_CHANNEL, DIAL_FILTER_ADC_CHANNEL,
-             DIAL_LFO_ADC_CHANNEL);
+             DIAL_LFO_ADC_CHANNEL, DIAL_WAVEMIX_ADC_CHANNEL);
 }
 
 /* Cycle order for physical cycle-mode button (BTN7): SAMPLE -> DRUMS -> SYNTH -> SAMPLE. */
@@ -353,7 +358,7 @@ static void handle_button_edges(void)
 
 static void read_analog_and_apply(void)
 {
-    int rv = 0, rr = 0, rf = 0, rl = 0;
+    int rv = 0, rr = 0, rf = 0, rl = 0, rw = 0;
     if (adc_oneshot_read(s_adc, SLIDER_VOL_ADC_CHANNEL, &rv) != ESP_OK) {
         return;
     }
@@ -364,6 +369,9 @@ static void read_analog_and_apply(void)
         return;
     }
     if (adc_oneshot_read(s_adc, DIAL_LFO_ADC_CHANNEL, &rl) != ESP_OK) {
+        return;
+    }
+    if (adc_oneshot_read(s_adc, DIAL_WAVEMIX_ADC_CHANNEL, &rw) != ESP_OK) {
         return;
     }
 
@@ -379,17 +387,22 @@ static void read_analog_and_apply(void)
     if (rl < 0) {
         rl = 0;
     }
+    if (rw < 0) {
+        rw = 0;
+    }
 
     float nv = fminf(1.0f, (float)rv / 4095.0f);
     float nr = fminf(1.0f, (float)rr / 4095.0f);
     float nf = fminf(1.0f, (float)rf / 4095.0f);
     float nl = fminf(1.0f, (float)rl / 4095.0f);
+    float nw = fminf(1.0f, (float)rw / 4095.0f);
 
     const float a = 0.25f;
     s_vol_ema  += (nv - s_vol_ema) * a;
     s_bend_ema += (nr - s_bend_ema) * a;
     s_filt_ema += (nf - s_filt_ema) * a;
     s_lfo_ema  += (nl - s_lfo_ema) * a;
+    s_wav_ema  += (nw - s_wav_ema) * a;
 
     float vol = s_vol_ema;
     /* Slider2: pitch bend -1 .. +1 semitone (center = 0.5 normalized) */
@@ -397,6 +410,7 @@ static void read_analog_and_apply(void)
     float lfo_hz = s_lfo_ema * 10.0f;
     float f_hz   = MASTER_FILTER_MIN_HZ +
                    s_filt_ema * (MASTER_FILTER_MAX_HZ - MASTER_FILTER_MIN_HZ);
+    float wave   = s_wav_ema;
 
     if (shared_state_lock()) {
         g_state.master_volume         = vol;
@@ -404,8 +418,9 @@ static void read_analog_and_apply(void)
         g_state.master_playback_rate  = 1.0f;
         g_state.master_detune_sem     = bend_sem;
         g_state.master_lfo_hz         = lfo_hz;
+        g_state.master_waveform_mix   = wave;
         g_state.master_reverb         = 0.0f;
-        g_state.master_delay_mix      = 0.0f; /* legacy; reverb path off */
+        g_state.master_delay_mix      = 0.0f; /* echo: mux channel not wired yet */
         shared_state_unlock();
     }
 }
@@ -424,6 +439,7 @@ void panel_input_init(void)
     s_bend_ema = 0.5f; /* pitch bend 0 semitones */
     s_filt_ema = 0.5f;
     s_lfo_ema  = 0.0f;
+    s_wav_ema  = 0.0f; /* default sine */
     s_last_scan_us = 0;
 
     matrix_gpio_init();

@@ -39,6 +39,23 @@ bool loop_recorder_has_data(void);
 void loop_recorder_clear_track(int track);
 void loop_recorder_clear_all(void);
 
+/** Timeline position for live synth segment capture (0 if not recording). */
+uint32_t loop_recorder_capture_time_us(void);
+
+/** Loop length in µs (0 before first take completes). */
+uint32_t loop_recorder_loop_length_us(void);
+
+/** Playhead for sustained-synth lookup: playing head or paused position. */
+uint32_t loop_recorder_playhead_us(void);
+
+/**
+ * If the loop is playing (or paused with a loop) and `track`'s tape has a
+ * sustained synth segment covering `loop_pos_us`, writes pitch + volume and
+ * returns true.
+ */
+bool loop_recorder_synth_playback_at(int track, uint32_t loop_pos_us,
+                                     uint8_t *out_midi, float *out_vol);
+
 #ifdef __cplusplus
 }
 #endif

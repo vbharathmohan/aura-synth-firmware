@@ -109,8 +109,20 @@ audio_block_t *mixer_process(const shared_state_t *snap)
     for (int t = 0; t < NUM_TRACKS; t++) {
         const track_params_t *tp = &snap->tracks[t];
 
-        /* Update voice parameters from shared state */
-        synth_voice_set_params(&s_voices[t], tp);
+        /* Panel dial drives sine/saw morph globally in synth mode. */
+        track_params_t tp_eff = *tp;
+        if (snap->mode == MODE_SYNTH) {
+            float w = snap->master_waveform_mix;
+            if (w < 0.0f) {
+                w = 0.0f;
+            }
+            if (w > 1.0f) {
+                w = 1.0f;
+            }
+            tp_eff.waveform_mix = w;
+        }
+
+        synth_voice_set_params(&s_voices[t], &tp_eff);
 
         /* Update per-track filter cutoff */
         biquad_update_cutoff(&s_track_filters[t], tp->filter_cutoff,

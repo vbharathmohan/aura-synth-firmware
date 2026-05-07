@@ -25,13 +25,14 @@
  *     re-fire on the next 22 ms tick.
  *
  * Threading: this whole file is one producer task. Sample/drum gestures
- * post to g_note_queue. MODE_SYNTH updates g_state.tracks[active_track]
- * once per poll and, while is_recording, queues NOTE_SOURCE_SYNTH_LAYER
- * keyframes for the loop recorder (MIDI in slot, gain in velocity).
+ * post to g_note_queue. MODE_SYNTH updates tracks: live ToF on active_track,
+ * loop playback on others; while is_recording, commits sustained NOTE_SOURCE_SYNTH_NOTE
+ * segments (start time, pitch, start velocity, duration) to the looper.
  */
 
 #include "sensor_task.h"
 #include "shared_state.h"
+#include "loop_recorder.h"
 #include "led_task.h"
 #include "panel_input.h"
 
@@ -278,9 +279,55 @@ static bool update_gliss_state_on_crossing(int idx, int64_t now_us)
     return s_gliss.active;
 }
 
+/* --- MODE_SYNTH loop recording: sustained notes (start, pitch, vel, duration) --- */
+static bool     s_synrec_active = false;
+static uint32_t s_synrec_start  = 0;
+static uint8_t  s_synrec_midi   = 60;
+static uint8_t  s_synrec_vel    = 0;
+static int      s_synrec_track  = 0;
+static bool     s_synrec_first_take = true;
+static bool     s_synrec_was_rec = false;
+static uint32_t s_synrec_last_cap = 0;
+
+static uint32_t synth_seg_duration_us(uint32_t start, uint32_t end,
+                                      uint32_t loop_len, bool first_take)
+{
+    if (first_take || loop_len == 0) {
+        return (end >= start) ? (end - start) : 0;
+    }
+    if (end >= start) {
+        return end - start;
+    }
+    return (loop_len - start) + end;
+}
+
+static void synth_commit_segment(uint32_t end_cap, uint32_t loop_len, bool first_take)
+{
+    if (!s_synrec_active) {
+        return;
+    }
+    uint32_t dur =
+        synth_seg_duration_us(s_synrec_start, end_cap, loop_len, first_take);
+    s_synrec_active = false;
+    if (dur < 1000 || s_synrec_vel < 1) {
+        return;
+    }
+
+    note_event_t e = {};
+    e.slot         = s_synrec_midi;
+    e.velocity     = s_synrec_vel;
+    e.speed        = 1.0f;
+    e.loop         = false;
+    e.source       = NOTE_SOURCE_SYNTH_NOTE;
+    e.track        = (uint8_t)s_synrec_track;
+    e.duration_us  = dur;
+    e.tape_time_us = s_synrec_start;
+    note_event_post_full(&e);
+}
+
 /**
- * MODE_SYNTH: drive active_track synth params from ToF — sine voice, C major by
- * sensor index, volume from distance on the closest **fresh** in-range cell.
+ * MODE_SYNTH: live ToF on active_track; loop playback on all tracks; record
+ * sustained segments while REC.
  */
 static void synth_tof_apply_gesture(int64_t now_us)
 {
@@ -319,20 +366,26 @@ static void synth_tof_apply_gesture(int64_t now_us)
         }
     }
 
+    bool        rec_now = g_state.is_recording;
+    uint32_t    loop_len = loop_recorder_loop_length_us();
+    uint32_t    cap = 0;
+
+    if (rec_now) {
+        cap = loop_recorder_capture_time_us();
+    }
+
+    if (s_synrec_was_rec && !rec_now && s_synrec_active) {
+        synth_commit_segment(s_synrec_last_cap, loop_len, s_synrec_first_take);
+    }
+    s_synrec_was_rec = rec_now;
+
     track_params_t *tp = &g_state.tracks[tr];
-    tp->waveform_mix  = 0.0f;   /* pure sine */
-    tp->pitch_bend    = g_state.master_detune_sem * 0.5f; /* ±1 st panel bend → voice ±2 st scale */
+    tp->pitch_bend    = g_state.master_detune_sem * 0.5f;
 
-    uint8_t rec_midi = 60;
-    float   rec_vol  = 0.0f;
+    if (best_idx >= 0) {
+        uint8_t midi = SYNTH_C_MAJOR_MIDI[best_idx];
+        tp->pitch = midi;
 
-    if (best_idx < 0) {
-        tp->volume = 0.0f;
-    } else {
-        tp->pitch = SYNTH_C_MAJOR_MIDI[best_idx];
-        rec_midi  = tp->pitch;
-
-        /* Closer (smaller mm) → louder */
         float t = ((float)best_d - (float)SYNTH_VOL_MM_CLOSE) /
                   (float)(SYNTH_VOL_MM_FAR - SYNTH_VOL_MM_CLOSE);
         if (t < 0.0f) {
@@ -342,19 +395,79 @@ static void synth_tof_apply_gesture(int64_t now_us)
             t = 1.0f;
         }
         tp->volume = 1.0f - t;
-        rec_vol    = tp->volume;
+
+        int vi = (int)(tp->volume * 255.0f);
+        if (vi < 0) {
+            vi = 0;
+        }
+        if (vi > 255) {
+            vi = 255;
+        }
+        uint8_t vel8 = (uint8_t)vi;
+
+        if (rec_now) {
+            if (!s_synrec_active) {
+                s_synrec_active      = true;
+                s_synrec_start       = cap;
+                s_synrec_midi        = midi;
+                s_synrec_vel         = vel8;
+                s_synrec_track       = tr;
+                s_synrec_first_take  = (loop_len == 0);
+            } else if (midi != s_synrec_midi) {
+                synth_commit_segment(cap, loop_len, s_synrec_first_take);
+                s_synrec_active      = true;
+                s_synrec_start       = cap;
+                s_synrec_midi        = midi;
+                s_synrec_vel         = vel8;
+                s_synrec_track       = tr;
+                s_synrec_first_take  = (loop_len == 0);
+            }
+        }
+    } else {
+        if (rec_now && s_synrec_active) {
+            synth_commit_segment(cap, loop_len, s_synrec_first_take);
+        }
+
+        uint32_t ph = loop_recorder_playhead_us();
+        uint8_t  pm = 60;
+        float    pv = 0.0f;
+        if (loop_len > 0 &&
+            loop_recorder_synth_playback_at(tr, ph, &pm, &pv)) {
+            tp->pitch  = pm;
+            tp->volume = pv;
+        } else {
+            tp->volume = 0.0f;
+        }
     }
 
-    if (g_state.is_recording) {
-        int v = (int)(rec_vol * 255.0f);
-        if (v < 0) {
-            v = 0;
+    if (rec_now) {
+        s_synrec_last_cap = cap;
+    }
+
+    /* Other tracks: tape only (no live ToF). */
+    if (loop_len > 0) {
+        uint32_t ph = loop_recorder_playhead_us();
+        for (int t = 0; t < NUM_TRACKS; t++) {
+            if (t == tr) {
+                continue;
+            }
+            track_params_t *ttp = &g_state.tracks[t];
+            ttp->pitch_bend    = g_state.master_detune_sem * 0.5f;
+            uint8_t pm = 60;
+            float pv = 0.0f;
+            if (loop_recorder_synth_playback_at(t, ph, &pm, &pv)) {
+                ttp->pitch  = pm;
+                ttp->volume = pv;
+            } else {
+                ttp->volume = 0.0f;
+            }
         }
-        if (v > 255) {
-            v = 255;
+    } else {
+        for (int t = 0; t < NUM_TRACKS; t++) {
+            if (t != tr) {
+                g_state.tracks[t].volume = 0.0f;
+            }
         }
-        note_event_post(rec_midi, (uint8_t)v, 1.0f, false, NOTE_SOURCE_SYNTH_LAYER,
-                        (uint8_t)tr);
     }
 
     shared_state_unlock();
