@@ -27,8 +27,8 @@
  */
 
 /* ====================== MODE SELECT ============================== */
-#define DEMO_MODE
-/* #define INTEGRATION_MODE */
+// #define DEMO_MODE
+#define INTEGRATION_MODE
 /* ================================================================== */
 
 #if defined(DEMO_MODE) && defined(INTEGRATION_MODE)
@@ -45,6 +45,7 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
+#include "driver/gpio.h"
 
 #include "shared_state.h"
 #include "audio_block.h"
