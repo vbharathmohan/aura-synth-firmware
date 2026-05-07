@@ -10,8 +10,6 @@
 
 #include "freertos/FreeRTOS.h"
 #include "driver/i2s_std.h"
-
-#include "driver/i2s_std.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
@@ -30,6 +28,17 @@ static i2s_chan_handle_t s_tx_chan = NULL;
 
 bool i2s_output_init(void)
 {
+    /* PCM5102A: release soft-mute before I2S data (XSMT must not float). */
+    gpio_config_t xsmt = {
+        .pin_bit_mask = 1ULL << I2S_PIN_XSMT,
+        .mode         = GPIO_MODE_OUTPUT,
+        .pull_up_en   = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type    = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&xsmt);
+    gpio_set_level(I2S_PIN_XSMT, 1);
+
     /* Channel config */
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(
         I2S_NUM_0, I2S_ROLE_MASTER);
@@ -76,8 +85,8 @@ bool i2s_output_init(void)
     }
 
     ESP_LOGI(TAG, "I2S initialized: %d Hz, 16-bit stereo, "
-             "BCLK=%d WS=%d DOUT=%d, DMA bufs=%d × %d frames",
-             SAMPLE_RATE, I2S_PIN_BCLK, I2S_PIN_WS, I2S_PIN_DOUT,
+             "BCLK=%d WS=%d DOUT=%d XSMT=%d (high=unmute), DMA bufs=%d × %d frames",
+             SAMPLE_RATE, I2S_PIN_BCLK, I2S_PIN_WS, I2S_PIN_DOUT, I2S_PIN_XSMT,
              I2S_DMA_BUF_COUNT, BLOCK_SAMPLES);
 
     return true;

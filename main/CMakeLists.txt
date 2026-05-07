@@ -21,6 +21,7 @@ idf_component_register(
         # --- Hardware ---
         "sensor_task.cpp"
         "led_task.cpp"
+        "panel_input.c"
         # "controls.c"
         # "lcd_comm.c"
 
@@ -31,6 +32,7 @@ idf_component_register(
         esp_driver_i2s
         esp_driver_i2c
         esp_driver_gpio
+        esp_adc
         led_strip
         esp_timer
         esp_common

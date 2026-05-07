@@ -11,14 +11,14 @@
  *       walks through one octave of C-major in the active instrument.
  *
  *   INTEGRATION_MODE
- *       Four physical buttons select instruments OR drum pads (a
- *       fifth button toggles between the two functions). Three
- *       master-bus controls map to volume / biquad filter cutoff /
- *       delay mix. ToFs always play the currently selected instrument.
+ *       3×3 button matrix + two sliders + one pot (see panel_input.c
+ *       for GPIO map). Pads select instrument or drums; transport
+ *       keys drive loop recorder; sliders set master volume / filter /
+ *       delay mix. ToFs play the selected instrument. Panel is polled
+ *       from the same task as the VL53L0X sensors.
  *
- * Only DEMO_MODE is fully implemented today — INTEGRATION_MODE has
- * scaffolding (button task, pin map, dial reads) so it compiles and
- * is easy to flesh out next. The seam in both modes is the same:
+ * DEMO_MODE omits the front panel; INTEGRATION_MODE initializes it at
+ * boot. The seam in both modes is the same:
  * everything that produces sound goes through the note-event queue,
  * which keeps the loop-recorder feature (planned next) trivial to
  * slot in later.
@@ -27,8 +27,8 @@
  */
 
 /* ====================== MODE SELECT ============================== */
-/* #define DEMO_MODE*/
-#define INTEGRATION_MODE 
+#define DEMO_MODE
+/* #define INTEGRATION_MODE */
 /* ================================================================== */
 
 #if defined(DEMO_MODE) && defined(INTEGRATION_MODE)
@@ -45,7 +45,6 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
-#include "driver/gpio.h"
 
 #include "shared_state.h"
 #include "audio_block.h"
@@ -57,6 +56,9 @@
 #include "effects.h"
 #include "sensor_task.h"
 #include "led_task.h"
+#ifdef INTEGRATION_MODE
+#include "panel_input.h"
+#endif
 
 static const char *TAG = "aura_synth";
 
@@ -174,31 +176,28 @@ static void demo_mode_task(void *param)
     }
 }
 
-#endif 
- /* DEMO_MODE */
+#endif /* DEMO_MODE */
 
 /* ================================================================== */
 /* INTEGRATION MODE                                                    */
 /* ================================================================== */
 #ifdef INTEGRATION_MODE
 
-/* === ROUND 1 PIN ASSIGNMENTS (Feather V2) ===
- * Testing: 4 pad buttons + pad toggle.
- * GPIO 38 = onboard button (has pull-up).
- * GPIO 34/36/37/39 = input-only pins (need external 10K pull-up to 3.3V).
- */
-#define BTN_PAD_0_PIN           GPIO_NUM_36  /* piano  / kick   (A4, ext pull-up) */
-#define BTN_PAD_1_PIN           GPIO_NUM_39  /* steel  / hihat  (A3, ext pull-up) */
-#define BTN_PAD_2_PIN           GPIO_NUM_34  /* trump  / clap   (A2, ext pull-up) */
-#define BTN_PAD_3_PIN           GPIO_NUM_37  /* 808    / snare  (D37, ext pull-up) */
-#define BTN_PAD_TOGGLE_PIN      GPIO_NUM_38  /* instr <-> drums (onboard button) */
-
-/* Transport buttons — DISABLED for Round 1. Set to -1 so they
- * never match any real GPIO read and the code safely does nothing. */
-#define BTN_REC_PIN             GPIO_NUM_NC
-#define BTN_CLEAR_PIN           GPIO_NUM_NC
-#define BTN_PLAY_PAUSE_PIN      GPIO_NUM_NC
-#define BTN_TRACK_CYCLE_PIN     GPIO_NUM_NC     
+/* These pin assignments are placeholders — fill in once the front
+ * panel is wired. The user reserved pins 12, 13, 14 for the shift
+ * register and the I2C / I2S pins are fixed; everything else on
+ * the ESP32 GPIO map is fair game. */
+#define BTN_PAD_0_PIN           GPIO_NUM_15  /* piano  / kick  */
+#define BTN_PAD_1_PIN           GPIO_NUM_16  /* steel  / hihat */
+#define BTN_PAD_2_PIN           GPIO_NUM_17  /* trump  / clap  */
+#define BTN_PAD_3_PIN           GPIO_NUM_18  /* 808    / snare */
+#define BTN_PAD_TOGGLE_PIN      GPIO_NUM_19  /* instr <-> drums */
+/* Prompt 2 transport buttons (active-low, pull-up enabled). */
+#define BTN_REC_PIN             GPIO_NUM_21  /* record / stop recording */
+#define BTN_CLEAR_PIN           GPIO_NUM_23  /* clear active track */
+#define BTN_PLAY_PAUSE_PIN      GPIO_NUM_27  /* play / pause */
+/* Prompt 3: single button cycles active track 0->1->2->3->0 */
+#define BTN_TRACK_CYCLE_PIN     GPIO_NUM_32
 
 /* Master FX controls (analog reads / encoder) */
 #define DIAL_VOLUME_ADC         ADC1_CHANNEL_0  /* placeholder */
@@ -225,26 +224,19 @@ static const instrument_t s_pad_instrument[NUM_DRUM_PADS] = {
 
 static void integration_buttons_init(void)
 {
-    /* GPIO 38 has an onboard pull-up. GPIO 34/36/37/39 are input-only
-     * and CANNOT use internal pull-ups — you MUST wire external 10K
-     * resistors from each pin to 3.3V on the breadboard. */
     gpio_config_t io = {0};
     io.mode         = GPIO_MODE_INPUT;
-    io.pull_up_en   = GPIO_PULLUP_DISABLE;  /* external pull-ups used */
+    io.pull_up_en   = GPIO_PULLUP_ENABLE;
     io.pull_down_en = GPIO_PULLDOWN_DISABLE;
     io.intr_type    = GPIO_INTR_DISABLE;
-
-    /* Only configure the pins we're actually using in this round.
-     * Round 1: pad buttons + toggle. */
     io.pin_bit_mask =
         (1ULL << BTN_PAD_0_PIN) | (1ULL << BTN_PAD_1_PIN) |
         (1ULL << BTN_PAD_2_PIN) | (1ULL << BTN_PAD_3_PIN) |
-        (1ULL << BTN_PAD_TOGGLE_PIN);
+        (1ULL << BTN_PAD_TOGGLE_PIN) |
+        (1ULL << BTN_REC_PIN) | (1ULL << BTN_CLEAR_PIN) |
+        (1ULL << BTN_PLAY_PAUSE_PIN) |
+        (1ULL << BTN_TRACK_CYCLE_PIN);
     gpio_config(&io);
-
-    ESP_LOGI(TAG, "Buttons init: PAD0=%d PAD1=%d PAD2=%d PAD3=%d TOGGLE=%d",
-             BTN_PAD_0_PIN, BTN_PAD_1_PIN, BTN_PAD_2_PIN,
-             BTN_PAD_3_PIN, BTN_PAD_TOGGLE_PIN);
 }
 
 static void integration_mode_task(void *param)
@@ -368,7 +360,6 @@ static void integration_mode_task(void *param)
     }
 }
 
-
 #endif /* INTEGRATION_MODE */
 
 /* ================================================================== */
@@ -460,6 +451,11 @@ void app_main(void)
         ESP_LOGI(TAG, "[7/8] LEDs OK");
     }
 
+#ifdef INTEGRATION_MODE
+    panel_input_init();
+    ESP_LOGI(TAG, "[7b/8] Front panel (matrix + ADC) OK — see panel_input.c GPIO map");
+#endif
+
     /* 8. Sensors. During init each "ToF ready" log lights one LED chunk.
      * After all sensors are processed: full-strip white flash then clear. */
     if (!sensor_task_init()) {
@@ -482,8 +478,7 @@ void app_main(void)
     xTaskCreatePinnedToCore(demo_mode_task, "demo_cycle", 3072, NULL,
                             4, NULL, 0);
 #else
-    xTaskCreatePinnedToCore(integration_mode_task, "integ", 4096, NULL,
-                            4, NULL, 0);
+    /* INTEGRATION_MODE: pads + ADC run inside sensor_task (panel_input_poll). */
 #endif
 
     ESP_LOGI(TAG, "");
