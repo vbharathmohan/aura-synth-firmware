@@ -25,8 +25,9 @@
  *     re-fire on the next 22 ms tick.
  *
  * Threading: this whole file is one producer task. Sample/drum gestures
- * post to g_note_queue only. MODE_SYNTH updates g_state.tracks[active_track]
- * once per poll under shared_state_lock() (not on every sensor IRQ).
+ * post to g_note_queue. MODE_SYNTH updates g_state.tracks[active_track]
+ * once per poll and, while is_recording, queues NOTE_SOURCE_SYNTH_LAYER
+ * keyframes for the loop recorder (MIDI in slot, gain in velocity).
  */
 
 #include "sensor_task.h"
@@ -135,9 +136,11 @@ static const uint8_t SYNTH_C_MAJOR_MIDI[NUM_TOF_SENSORS] = {
     60, 62, 64, 65, 67, 69, 71, 72,   /* C4 .. C5 */
 };
 
-/* Hand height (range mm) → synth volume; farther = louder (higher above sensor). */
-#define SYNTH_VOL_MM_MIN        160
-#define SYNTH_VOL_MM_MAX        420
+/* Hand distance (mm) → synth volume: closer = louder. */
+#define SYNTH_VOL_MM_CLOSE      140   /* near sensor → full volume */
+#define SYNTH_VOL_MM_FAR        380   /* farther → silence */
+/* Drop hand tracking if this sensor hasn't produced a valid range recently. */
+#define SYNTH_MAX_READING_AGE_US 75000
 
 struct swipe_state_t {
     uint16_t prev_dist_mm;
@@ -277,9 +280,9 @@ static bool update_gliss_state_on_crossing(int idx, int64_t now_us)
 
 /**
  * MODE_SYNTH: drive active_track synth params from ToF — sine voice, C major by
- * sensor index, volume from hand height (range reading) on the closest active cell.
+ * sensor index, volume from distance on the closest **fresh** in-range cell.
  */
-static void synth_tof_apply_gesture(void)
+static void synth_tof_apply_gesture(int64_t now_us)
 {
     if (!shared_state_lock()) {
         return;
@@ -295,10 +298,14 @@ static void synth_tof_apply_gesture(void)
         tr = 0;
     }
 
-    int best_idx   = -1;
+    int best_idx    = -1;
     uint16_t best_d = UINT16_MAX;
 
     for (int i = 0; i < NUM_TOF_SENSORS; i++) {
+        int64_t t_up = s_last_update_us[i].load();
+        if (t_up <= 0 || (now_us - t_up) > SYNTH_MAX_READING_AGE_US) {
+            continue;
+        }
         uint16_t d = s_last_dist_mm[i].load();
         if (d == 0 || d > DIST_RANGE_MAX) {
             continue;
@@ -316,23 +323,39 @@ static void synth_tof_apply_gesture(void)
     tp->waveform_mix  = 0.0f;   /* pure sine */
     tp->pitch_bend    = g_state.master_detune_sem * 0.5f; /* ±1 st panel bend → voice ±2 st scale */
 
+    uint8_t rec_midi = 60;
+    float   rec_vol  = 0.0f;
+
     if (best_idx < 0) {
         tp->volume = 0.0f;
-        shared_state_unlock();
-        return;
+    } else {
+        tp->pitch = SYNTH_C_MAJOR_MIDI[best_idx];
+        rec_midi  = tp->pitch;
+
+        /* Closer (smaller mm) → louder */
+        float t = ((float)best_d - (float)SYNTH_VOL_MM_CLOSE) /
+                  (float)(SYNTH_VOL_MM_FAR - SYNTH_VOL_MM_CLOSE);
+        if (t < 0.0f) {
+            t = 0.0f;
+        }
+        if (t > 1.0f) {
+            t = 1.0f;
+        }
+        tp->volume = 1.0f - t;
+        rec_vol    = tp->volume;
     }
 
-    tp->pitch = SYNTH_C_MAJOR_MIDI[best_idx];
-
-    float t = ((float)best_d - (float)SYNTH_VOL_MM_MIN) /
-              (float)(SYNTH_VOL_MM_MAX - SYNTH_VOL_MM_MIN);
-    if (t < 0.0f) {
-        t = 0.0f;
+    if (g_state.is_recording) {
+        int v = (int)(rec_vol * 255.0f);
+        if (v < 0) {
+            v = 0;
+        }
+        if (v > 255) {
+            v = 255;
+        }
+        note_event_post(rec_midi, (uint8_t)v, 1.0f, false, NOTE_SOURCE_SYNTH_LAYER,
+                        (uint8_t)tr);
     }
-    if (t > 1.0f) {
-        t = 1.0f;
-    }
-    tp->volume = t;
 
     shared_state_unlock();
 }
@@ -433,7 +456,8 @@ static bool process_reading(int idx, uint16_t distance_mm, int64_t now_us)
 
             note_event_post(slot, velocity, speed,
                             /*loop=*/false,
-                            /*source=*/(int8_t)idx);
+                            /*source=*/(int8_t)idx,
+                            /*track=*/0);
             st.armed = false;
             st.last_trigger_us = now_us;
             fired = true;
@@ -477,12 +501,17 @@ static void sensor_polling_task(void *)
                 s_last_dist_mm[i].store(mm);
                 s_last_update_us[i].store(now_us);
                 process_reading(i, mm, now_us);
+            } else {
+                /* Invalidate stale range so MODE_SYNTH (and LEDs) don't stick on
+                 * the last in-range value after the object leaves the FoV. */
+                s_last_dist_mm[i].store(0);
+                s_last_update_us[i].store(now_us);
             }
 
             VL53L0X_ClearInterruptMask(dev, 0);
         }
 
-        synth_tof_apply_gesture();
+        synth_tof_apply_gesture(esp_timer_get_time());
 
         panel_input_poll();
 

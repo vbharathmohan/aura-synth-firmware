@@ -46,15 +46,10 @@
  *   Slider 2 (GPIO 39, A3): pitch bend -1 .. +1 semitone (center = in tune)
  *   Dial — filter (GPIO 36, A4): master LPF cutoff (see MASTER_FILTER_*)
  *   Dial — LFO    (GPIO 37):     0 .. 10 Hz
- *   Dial — reverb (GPIO 35):     0 .. 1 (wet / echo depth)
  *
- *   Why not GPIO 38: on Feather V2, 38 is the **USER** button (digital), not a
- *   spare analog input. On ESP32-WROOM, ADC1 is only on 32–39; after matrix
- *   (32), LED (33), sliders (34, 39), filter+LFO (36, 37), the only remaining
- *   ADC1 pin is **35** (Feather silk: often VBAT sense). Use it for the reverb
- *   pot only if your hardware routes it as a normal ADC line (do not parallel
- *   an external pot with the stock battery divider without a design review).
- *   Pins 16–18 / 8 / 23 are **not** ADC-capable on ESP32.
+ *   Master reverb / delay is **forced off** in firmware (master_reverb = 0).
+ *   A reverb pot on GPIO 35 is not read until hardware is wired and this is
+ *   re-enabled. (GPIO 35 is often VBAT on Feather; do not sample it blindly.)
  *
  * RESERVED ELSEWHERE (do not use for matrix):
  *   4,25,26 = I2S; 20,22 = I2C ToF; 12,13,14 = 74HC595; 27 = XSMT; 33 = WS2812
@@ -92,7 +87,7 @@ static const char *TAG = "panel_input";
 #define SLIDER_BEND_ADC_CHANNEL   ADC_CHANNEL_3   /* GPIO 39 — ±1 semitone bend */
 #define DIAL_FILTER_ADC_CHANNEL   ADC_CHANNEL_0   /* GPIO 36, A4 — filter */
 #define DIAL_LFO_ADC_CHANNEL      ADC_CHANNEL_1   /* GPIO 37 — LFO */
-#define DIAL_REVERB_ADC_CHANNEL   ADC_CHANNEL_7   /* GPIO 35 — reverb (see file header) */
+/* #define DIAL_REVERB_ADC_CHANNEL ADC_CHANNEL_7 */ /* GPIO 35 — reserved; reverb off */
 
 #define NUM_ROWS    3
 #define NUM_COLS    3
@@ -140,7 +135,6 @@ static float    s_vol_ema;     /* slider1 → master volume */
 static float    s_bend_ema;    /* slider2 → pitch bend (normalized; 0.5 = center) */
 static float    s_filt_ema;    /* dial GPIO36 → LPF cutoff */
 static float    s_lfo_ema;     /* dial → LFO Hz */
-static float    s_rvb_ema;     /* dial → reverb */
 
 static void matrix_gpio_init(void)
 {
@@ -213,13 +207,11 @@ static void adc_hw_init(void)
     ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, SLIDER_BEND_ADC_CHANNEL, &chan_cfg));
     ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, DIAL_FILTER_ADC_CHANNEL, &chan_cfg));
     ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, DIAL_LFO_ADC_CHANNEL, &chan_cfg));
-    ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, DIAL_REVERB_ADC_CHANNEL, &chan_cfg));
 
     ESP_LOGI(TAG,
-             "ADC: vol=GPIO34 ch%d | bend=GPIO39 ch%d | filt=GPIO36 ch%d | "
-             "lfo=GPIO37 ch%d | rvb=GPIO35 ch%d",
+             "ADC: vol=GPIO34 ch%d | bend=GPIO39 ch%d | filt=GPIO36 ch%d | lfo=GPIO37 ch%d",
              SLIDER_VOL_ADC_CHANNEL, SLIDER_BEND_ADC_CHANNEL, DIAL_FILTER_ADC_CHANNEL,
-             DIAL_LFO_ADC_CHANNEL, DIAL_REVERB_ADC_CHANNEL);
+             DIAL_LFO_ADC_CHANNEL);
 }
 
 /* Cycle order for physical cycle-mode button (BTN7): SAMPLE -> DRUMS -> SYNTH -> SAMPLE. */
@@ -250,7 +242,8 @@ static void fire_drum_pad(int pad_idx)
     if (pad_idx < 0 || pad_idx >= NUM_DRUM_PADS) return;
     note_event_post(s_drum_pad_slot[pad_idx],
                     /*velocity=*/200, /*speed=*/1.0f, /*loop=*/false,
-                    /*source=*/(int8_t)(10 + pad_idx));
+                    /*source=*/(int8_t)(10 + pad_idx),
+                    /*track=*/0);
 }
 
 static void handle_button_edges(void)
@@ -360,7 +353,7 @@ static void handle_button_edges(void)
 
 static void read_analog_and_apply(void)
 {
-    int rv = 0, rr = 0, rf = 0, rl = 0, rb = 0;
+    int rv = 0, rr = 0, rf = 0, rl = 0;
     if (adc_oneshot_read(s_adc, SLIDER_VOL_ADC_CHANNEL, &rv) != ESP_OK) {
         return;
     }
@@ -371,9 +364,6 @@ static void read_analog_and_apply(void)
         return;
     }
     if (adc_oneshot_read(s_adc, DIAL_LFO_ADC_CHANNEL, &rl) != ESP_OK) {
-        return;
-    }
-    if (adc_oneshot_read(s_adc, DIAL_REVERB_ADC_CHANNEL, &rb) != ESP_OK) {
         return;
     }
 
@@ -389,28 +379,22 @@ static void read_analog_and_apply(void)
     if (rl < 0) {
         rl = 0;
     }
-    if (rb < 0) {
-        rb = 0;
-    }
 
     float nv = fminf(1.0f, (float)rv / 4095.0f);
     float nr = fminf(1.0f, (float)rr / 4095.0f);
     float nf = fminf(1.0f, (float)rf / 4095.0f);
     float nl = fminf(1.0f, (float)rl / 4095.0f);
-    float nb = fminf(1.0f, (float)rb / 4095.0f);
 
     const float a = 0.25f;
     s_vol_ema  += (nv - s_vol_ema) * a;
     s_bend_ema += (nr - s_bend_ema) * a;
     s_filt_ema += (nf - s_filt_ema) * a;
     s_lfo_ema  += (nl - s_lfo_ema) * a;
-    s_rvb_ema  += (nb - s_rvb_ema) * a;
 
     float vol = s_vol_ema;
     /* Slider2: pitch bend -1 .. +1 semitone (center = 0.5 normalized) */
     float bend_sem = (s_bend_ema - 0.5f) * 2.0f;
     float lfo_hz = s_lfo_ema * 10.0f;
-    float reverb = s_rvb_ema;
     float f_hz   = MASTER_FILTER_MIN_HZ +
                    s_filt_ema * (MASTER_FILTER_MAX_HZ - MASTER_FILTER_MIN_HZ);
 
@@ -420,8 +404,8 @@ static void read_analog_and_apply(void)
         g_state.master_playback_rate  = 1.0f;
         g_state.master_detune_sem     = bend_sem;
         g_state.master_lfo_hz         = lfo_hz;
-        g_state.master_reverb         = reverb;
-        g_state.master_delay_mix      = reverb; /* legacy */
+        g_state.master_reverb         = 0.0f;
+        g_state.master_delay_mix      = 0.0f; /* legacy; reverb path off */
         shared_state_unlock();
     }
 }
@@ -440,7 +424,6 @@ void panel_input_init(void)
     s_bend_ema = 0.5f; /* pitch bend 0 semitones */
     s_filt_ema = 0.5f;
     s_lfo_ema  = 0.0f;
-    s_rvb_ema  = 0.0f;
     s_last_scan_us = 0;
 
     matrix_gpio_init();

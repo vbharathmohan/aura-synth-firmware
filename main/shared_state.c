@@ -90,7 +90,7 @@ float shared_state_sample_speed_scale(const shared_state_t *snap)
 }
 
 bool note_event_post(uint8_t slot, uint8_t velocity, float speed,
-                     bool loop, int8_t source)
+                     bool loop, int8_t source, uint8_t track)
 {
     if (g_note_queue == NULL) return false;
 
@@ -100,6 +100,7 @@ bool note_event_post(uint8_t slot, uint8_t velocity, float speed,
         .speed    = speed,
         .loop     = loop,
         .source   = source,
+        .track    = track,
     };
     /* Non-blocking: if the audio task is behind, dropping a note is
      * better than blocking the producer (sensor task on Core 1). */

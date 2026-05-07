@@ -116,10 +116,9 @@ audio_block_t *mixer_process(const shared_state_t *snap)
         biquad_update_cutoff(&s_track_filters[t], tp->filter_cutoff,
                              0.707f, s_sample_rate);
 
-        /* Decide if this track's synth voice should be active */
-        bool synth_active = (snap->mode == MODE_SYNTH &&
-                             t == snap->active_track &&
-                             tp->volume > 0.01f);
+        /* Any track with level plays in synth mode (ToF drives active_track;
+         * loop playback drives others via synth keyframes). */
+        bool synth_active = (snap->mode == MODE_SYNTH && tp->volume > 0.01f);
         synth_voice_set_active(&s_voices[t], synth_active);
 
         if (!s_voices[t].active) continue;

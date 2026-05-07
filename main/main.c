@@ -337,7 +337,8 @@ static void integration_mode_task(void *param)
                                     /*velocity=*/200,
                                     /*speed=*/1.0f,
                                     /*loop=*/false,
-                                    /*source=*/(int8_t)(10 + i));
+                                    /*source=*/(int8_t)(10 + i),
+                                    /*track=*/0);
                 } else {
                     /* Switch active instrument */
                     if (shared_state_lock()) {

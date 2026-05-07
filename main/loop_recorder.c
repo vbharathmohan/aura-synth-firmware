@@ -54,6 +54,10 @@ static uint32_t s_pause_loop_pos_us = 0;
 static uint32_t s_loop_duration_us = 0;   /* 0 = no loop yet */
 static uint32_t s_last_loop_pos_us = 0;   /* set by update() each cycle */
 
+/* After starting overdub, skip one playback emit tick so we don't replay a huge
+ * (prev, cur] window and flood the note queue. */
+static bool s_suppress_playback_emit_once;
+
 static bool all_tracks_empty(void)
 {
     for (int t = 0; t < NUM_TRACKS; t++) {
@@ -99,6 +103,8 @@ static void start_recording(int track)
             s_playing = true;
         }
         s_last_loop_pos_us = current_loop_pos_us(now_us);
+        /* Avoid same-tick / re-anchor edge cases firing many loop events at once. */
+        s_suppress_playback_emit_once = true;
     }
 
     ESP_LOGI(TAG, "REC start track=%d loop_len_us=%u",
@@ -152,6 +158,7 @@ bool loop_recorder_init(void)
     s_pause_loop_pos_us = 0;
     s_loop_duration_us = 0;
     s_last_loop_pos_us = 0;
+    s_suppress_playback_emit_once = false;
 
     for (int t = 0; t < NUM_TRACKS; t++) {
         s_tracks[t] = (rec_event_t *)heap_caps_calloc(
@@ -182,6 +189,7 @@ void loop_recorder_deinit(void)
     s_playing = false;
     s_loop_duration_us = 0;
     s_last_loop_pos_us = 0;
+    s_suppress_playback_emit_once = false;
 }
 
 void loop_recorder_on_live_event(const note_event_t *evt)
@@ -286,18 +294,24 @@ void loop_recorder_update(shared_state_t *snap)
     if (s_playing && s_loop_duration_us > 0) {
         uint32_t cur_pos_us = current_loop_pos_us(now_us);
         uint32_t prev_pos_us = s_last_loop_pos_us;
-        bool wrapped = (cur_pos_us < prev_pos_us);
+        bool skip_emit = s_suppress_playback_emit_once;
+        s_suppress_playback_emit_once = false;
 
-        for (int t = 0; t < NUM_TRACKS; t++) {
-            rec_event_t *tape = s_tracks[t];
-            int count = s_event_count[t];
-            if (tape == NULL || count <= 0) continue;
+        if (!skip_emit) {
+            bool wrapped = (cur_pos_us < prev_pos_us);
 
-            for (int i = 0; i < count; i++) {
-                if (window_contains(tape[i].t_us, prev_pos_us, cur_pos_us, wrapped)) {
-                    note_event_t e = tape[i].evt;
-                    e.source = 20; /* loop playback provenance */
-                    note_event_post(e.slot, e.velocity, e.speed, e.loop, e.source);
+            for (int t = 0; t < NUM_TRACKS; t++) {
+                rec_event_t *tape = s_tracks[t];
+                int count = s_event_count[t];
+                if (tape == NULL || count <= 0) continue;
+
+                for (int i = 0; i < count; i++) {
+                    if (window_contains(tape[i].t_us, prev_pos_us, cur_pos_us, wrapped)) {
+                        note_event_t e = tape[i].evt;
+                        e.source = 20; /* loop playback provenance */
+                        note_event_post(e.slot, e.velocity, e.speed, e.loop, e.source,
+                                        e.track);
+                    }
                 }
             }
         }
@@ -337,6 +351,7 @@ void loop_recorder_clear_track(int track)
         s_pause_loop_pos_us = 0;
         s_loop_duration_us = 0;
         s_last_loop_pos_us = 0;
+        s_suppress_playback_emit_once = false;
         ESP_LOGI(TAG, "All tracks empty -> loop length reset");
     }
 }
@@ -354,4 +369,5 @@ void loop_recorder_clear_all(void)
     s_pause_loop_pos_us = 0;
     s_loop_duration_us = 0;
     s_last_loop_pos_us = 0;
+    s_suppress_playback_emit_once = false;
 }
