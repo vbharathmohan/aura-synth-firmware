@@ -156,6 +156,25 @@ audio_block_t *mixer_process(const shared_state_t *snap)
     /* --- Apply master volume --- */
     audio_block_gain(mix, snap->master_volume);
 
+    /* --- Sync master FX parameters from shared state (panel sliders) --- */
+    if (s_master_fx[0] != NULL && s_master_fx_params[0] != NULL &&
+        s_master_fx[0] == fx_biquad) {
+        biquad_t *mb = (biquad_t *)s_master_fx_params[0];
+        biquad_update_cutoff(mb, snap->master_filter, 0.707f, s_sample_rate);
+    }
+    if (s_master_fx[1] != NULL && s_master_fx_params[1] != NULL &&
+        s_master_fx[1] == fx_delay) {
+        delay_t *dly = (delay_t *)s_master_fx_params[1];
+        float m = snap->master_delay_mix;
+        if (m < 0.0f) {
+            m = 0.0f;
+        }
+        if (m > 1.0f) {
+            m = 1.0f;
+        }
+        dly->mix = m;
+    }
+
     /* --- Apply master effects chain --- */
     for (int fx = 0; fx < MAX_MASTER_FX; fx++) {
         if (s_master_fx[fx] != NULL) {

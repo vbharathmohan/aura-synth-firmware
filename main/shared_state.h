@@ -169,7 +169,7 @@ typedef struct {
 
     /* --- Master bus --- */
     float    master_volume;      /* 0.0 - 1.0 */
-    float    master_filter;      /* 100.0 - 2000.0 Hz */
+    float    master_filter;      /* master LPF cutoff Hz (panel / automation) */
     float    master_delay_mix;   /* 0.0 = dry, 1.0 = full wet */
 
     /* --- Drum triggers (one-shot, consumed by Core 1) --- */

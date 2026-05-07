@@ -1,7 +1,7 @@
 /**
  * led_task.h — Aura-Synth front-panel LEDs.
  *
- * Drives a single WS2812 strip (default: 60 LEDs on GPIO 5) with two
+ * Drives a single WS2812 strip (default: 60 LEDs on GPIO 33) with two
  * overlaid layers:
  *
  *   1. Per-sensor "bin" feedback. The strip is divided into 8 bins of
@@ -39,7 +39,7 @@ extern "C" {
 
 /* WS2812 data line. Adjust to match your wiring. */
 #ifndef LED_STRIP_GPIO
-#define LED_STRIP_GPIO          5
+#define LED_STRIP_GPIO          33
 #endif
 
 /* Total LEDs on the strip. Bins are LED_STRIP_COUNT / 8 per ToF sensor;

@@ -11,14 +11,14 @@
  *       walks through one octave of C-major in the active instrument.
  *
  *   INTEGRATION_MODE
- *       Four physical buttons select instruments OR drum pads (a
- *       fifth button toggles between the two functions). Three
- *       master-bus controls map to volume / biquad filter cutoff /
- *       delay mix. ToFs always play the currently selected instrument.
+ *       3×3 button matrix + two sliders + one pot (see panel_input.c
+ *       for GPIO map). Pads select instrument or drums; transport
+ *       keys drive loop recorder; sliders set master volume / filter /
+ *       delay mix. ToFs play the selected instrument. Panel is polled
+ *       from the same task as the VL53L0X sensors.
  *
- * Only DEMO_MODE is fully implemented today — INTEGRATION_MODE has
- * scaffolding (button task, pin map, dial reads) so it compiles and
- * is easy to flesh out next. The seam in both modes is the same:
+ * DEMO_MODE omits the front panel; INTEGRATION_MODE initializes it at
+ * boot. The seam in both modes is the same:
  * everything that produces sound goes through the note-event queue,
  * which keeps the loop-recorder feature (planned next) trivial to
  * slot in later.
@@ -27,8 +27,13 @@
  */
 
 /* ====================== MODE SELECT ============================== */
+<<<<<<< HEAD
 /* #define DEMO_MODE*/
 #define INTEGRATION_MODE 
+=======
+// #define DEMO_MODE
+#define INTEGRATION_MODE
+>>>>>>> 469f78dac70cd3eef70e5f3238965bef3d1bedef
 /* ================================================================== */
 
 #if defined(DEMO_MODE) && defined(INTEGRATION_MODE)
@@ -45,7 +50,6 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
-#include "driver/gpio.h"
 
 #include "shared_state.h"
 #include "audio_block.h"
@@ -57,6 +61,9 @@
 #include "effects.h"
 #include "sensor_task.h"
 #include "led_task.h"
+#ifdef INTEGRATION_MODE
+#include "panel_input.h"
+#endif
 
 static const char *TAG = "aura_synth";
 
@@ -178,6 +185,7 @@ static void demo_mode_task(void *param)
  /* DEMO_MODE */
 
 /* ================================================================== */
+<<<<<<< HEAD
 /* INTEGRATION MODE                                                    */
 /* ================================================================== */
 #ifdef INTEGRATION_MODE
@@ -372,6 +380,8 @@ static void integration_mode_task(void *param)
 #endif /* INTEGRATION_MODE */
 
 /* ================================================================== */
+=======
+>>>>>>> 469f78dac70cd3eef70e5f3238965bef3d1bedef
 /* Master FX wiring                                                    */
 /* ================================================================== */
 /* The mixer reads master_volume directly each cycle. The biquad
@@ -460,6 +470,11 @@ void app_main(void)
         ESP_LOGI(TAG, "[7/8] LEDs OK");
     }
 
+#ifdef INTEGRATION_MODE
+    panel_input_init();
+    ESP_LOGI(TAG, "[7b/8] Front panel (matrix + ADC) OK — see panel_input.c GPIO map");
+#endif
+
     /* 8. Sensors. During init each "ToF ready" log lights one LED chunk.
      * After all sensors are processed: full-strip white flash then clear. */
     if (!sensor_task_init()) {
@@ -482,8 +497,7 @@ void app_main(void)
     xTaskCreatePinnedToCore(demo_mode_task, "demo_cycle", 3072, NULL,
                             4, NULL, 0);
 #else
-    xTaskCreatePinnedToCore(integration_mode_task, "integ", 4096, NULL,
-                            4, NULL, 0);
+    /* INTEGRATION_MODE: pads + ADC run inside sensor_task (panel_input_poll). */
 #endif
 
     ESP_LOGI(TAG, "");

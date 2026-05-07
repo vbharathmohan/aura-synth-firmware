@@ -38,6 +38,8 @@ extern "C" {
 #define I2S_PIN_BCLK        26    /* bit clock  — pin A0 on Feather */
 #define I2S_PIN_WS          25    /* word select — pin A1 on Feather */
 #define I2S_PIN_DOUT        4     /* data out   — pin A5 on Feather */
+/** PCM5102A XSMT (external soft mute): logic high = normal playback. */
+#define I2S_PIN_XSMT        27
 
 /**
  * Number of DMA buffers. More buffers = more latency tolerance
