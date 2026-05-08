@@ -413,12 +413,22 @@ static void handle_button_edges(void)
         case 5: /* Row2 Col1: Cycle mode */
             {
                 instrument_mode_t new_mode = MODE_SAMPLE;
+                bool blocked = false;
                 if (shared_state_lock()) {
-                    new_mode = next_global_mode(g_state.mode);
-                    g_state.mode = new_mode;
+                    if (g_state.is_recording) {
+                        blocked  = true;
+                        new_mode = g_state.mode;
+                    } else {
+                        new_mode   = next_global_mode(g_state.mode);
+                        g_state.mode = new_mode;
+                    }
                     shared_state_unlock();
                 }
-                ESP_LOGI(TAG, "Mode -> %s", mode_name(new_mode));
+                if (blocked) {
+                    ESP_LOGW(TAG, "Mode change blocked while recording");
+                } else {
+                    ESP_LOGI(TAG, "Mode -> %s", mode_name(new_mode));
+                }
             }
             break;
 

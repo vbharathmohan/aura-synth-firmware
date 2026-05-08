@@ -12,6 +12,7 @@
 
 #include "mixer.h"
 #include "sampler.h"
+#include "loop_recorder.h"
 #include <string.h>
 #include <math.h>
 #include "esp_log.h"
@@ -106,9 +107,9 @@ audio_block_t *mixer_process(const shared_state_t *snap)
     for (int t = 0; t < NUM_TRACKS; t++) {
         const track_params_t *tp = &snap->tracks[t];
 
-        /* Panel dials (wavemix + LFO) apply only in MODE_SYNTH. */
+        /* Wavemix for live synth (global MODE_SYNTH) and for synth-mode tape tracks. */
         track_params_t tp_eff = *tp;
-        if (snap->mode == MODE_SYNTH) {
+        if (snap->mode == MODE_SYNTH || loop_recorder_track_recorded_as_synth(t)) {
             float w = snap->master_waveform_mix;
             if (w < 0.0f) {
                 w = 0.0f;
@@ -126,9 +127,11 @@ audio_block_t *mixer_process(const shared_state_t *snap)
         biquad_update_cutoff(&s_track_filters[t], tp->filter_cutoff,
                              0.707f, s_sample_rate);
 
-        /* Any track with level plays in synth mode (ToF drives active_track;
-         * loop playback drives others via synth keyframes). */
-        bool synth_active = (snap->mode == MODE_SYNTH && tp->volume > 0.01f);
+        /* Synth voice on if this track is sounding: live ToF in MODE_SYNTH or
+         * loop playback of a track recorded in MODE_SYNTH. */
+        bool synth_active = (tp->volume > 0.01f) &&
+                            (snap->mode == MODE_SYNTH ||
+                             loop_recorder_track_recorded_as_synth(t));
         synth_voice_set_active(&s_voices[t], synth_active);
 
         if (!s_voices[t].active) continue;

@@ -56,6 +56,9 @@ uint32_t loop_recorder_playhead_us(void);
 bool loop_recorder_synth_playback_at(int track, uint32_t loop_pos_us,
                                      uint8_t *out_midi, float *out_vol);
 
+/** True if this track has a synth-mode tape (sustained segments via synth voices). */
+bool loop_recorder_track_recorded_as_synth(int track);
+
 /**
  * Rasterize this track’s tape into `buckets` slots spanning the loop.
  * - Sample hits become single-bucket spikes (narrow bars in UI)

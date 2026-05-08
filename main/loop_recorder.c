@@ -38,6 +38,8 @@ typedef struct {
 
 static rec_event_t *s_tracks[NUM_TRACKS];
 static int          s_event_count[NUM_TRACKS];
+/** Mode active when REC was started on this track (drives synth vs sampler replay). */
+static instrument_mode_t s_track_cap_mode[NUM_TRACKS];
 
 static bool     s_recording = false;
 static bool     s_playing   = false;
@@ -70,6 +72,7 @@ static void clear_track_internal(int track)
 {
     if (track < 0 || track >= NUM_TRACKS) return;
     s_event_count[track] = 0;
+    s_track_cap_mode[track] = MODE_COUNT;
 }
 
 static uint32_t current_loop_pos_us(int64_t now_us)
@@ -80,12 +83,13 @@ static uint32_t current_loop_pos_us(int64_t now_us)
     return (uint32_t)(elapsed % s_loop_duration_us);
 }
 
-static void start_recording(int track)
+static void start_recording(int track, instrument_mode_t cap_mode)
 {
     if (track < 0 || track >= NUM_TRACKS) track = 0;
     s_recording = true;
     s_record_track = track;
-    clear_track_internal(track); /* overwrite policy */
+    clear_track_internal(track); /* overwrite policy — clears cap mode to MODE_COUNT */
+    s_track_cap_mode[track] = cap_mode;
 
     int64_t now_us = esp_timer_get_time();
 
@@ -107,8 +111,8 @@ static void start_recording(int track)
         s_suppress_playback_emit_once = true;
     }
 
-    ESP_LOGI(TAG, "REC start track=%d loop_len_us=%u",
-             s_record_track, (unsigned)s_loop_duration_us);
+    ESP_LOGI(TAG, "REC start track=%d mode=%d loop_len_us=%u",
+             s_record_track, (int)cap_mode, (unsigned)s_loop_duration_us);
 }
 
 static void stop_recording(void)
@@ -149,6 +153,9 @@ bool loop_recorder_init(void)
 {
     memset(s_tracks, 0, sizeof(s_tracks));
     memset(s_event_count, 0, sizeof(s_event_count));
+    for (int t = 0; t < NUM_TRACKS; t++) {
+        s_track_cap_mode[t] = MODE_COUNT;
+    }
 
     s_recording = false;
     s_playing = false;
@@ -184,6 +191,7 @@ void loop_recorder_deinit(void)
             s_tracks[t] = NULL;
         }
         s_event_count[t] = 0;
+        s_track_cap_mode[t] = MODE_COUNT;
     }
     s_recording = false;
     s_playing = false;
@@ -335,6 +343,14 @@ uint32_t loop_recorder_playhead_us(void)
     return s_pause_loop_pos_us;
 }
 
+bool loop_recorder_track_recorded_as_synth(int track)
+{
+    if (track < 0 || track >= NUM_TRACKS) {
+        return false;
+    }
+    return s_track_cap_mode[track] == MODE_SYNTH && s_event_count[track] > 0;
+}
+
 bool loop_recorder_synth_playback_at(int track, uint32_t loop_pos_us,
                                      uint8_t *out_midi, float *out_vol)
 {
@@ -465,7 +481,7 @@ void loop_recorder_update(shared_state_t *snap)
     /* RECORD toggle. */
     if (snap->record_pressed) {
         if (!s_recording) {
-            start_recording(snap->active_track);
+            start_recording(snap->active_track, snap->mode);
         } else {
             stop_recording();
         }
@@ -496,7 +512,13 @@ void loop_recorder_update(shared_state_t *snap)
             for (int t = 0; t < NUM_TRACKS; t++) {
                 rec_event_t *tape = s_tracks[t];
                 int count = s_event_count[t];
-                if (tape == NULL || count <= 0) continue;
+                if (tape == NULL || count <= 0) {
+                    continue;
+                }
+                /* Synth layers are replayed via synth_voice + playhead in sensor_task. */
+                if (s_track_cap_mode[t] == MODE_SYNTH) {
+                    continue;
+                }
 
                 for (int i = 0; i < count; i++) {
                     const note_event_t *ev = &tape[i].evt;

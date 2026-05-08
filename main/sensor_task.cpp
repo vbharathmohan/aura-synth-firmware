@@ -24,8 +24,8 @@
  *   - Per-instrument retrigger lock-out so a single fast swipe doesn't
  *     re-fire on the next 22 ms tick.
  *
- * Threading: this whole file is one producer task. Sample/drum gestures
- * post to g_note_queue. MODE_SYNTH updates tracks: live ToF on active_track,
+ * Threading: this whole file is one producer task. ToF sample swipes post
+ * to g_note_queue only in MODE_SAMPLE. MODE_SYNTH updates tracks: live ToF on active_track,
  * loop playback on others; while is_recording, commits sustained NOTE_SOURCE_SYNTH_NOTE
  * segments (start time, pitch, start velocity, duration) to the looper.
  */
@@ -326,17 +326,12 @@ static void synth_commit_segment(uint32_t end_cap, uint32_t loop_len, bool first
 }
 
 /**
- * MODE_SYNTH: live ToF on active_track; loop playback on all tracks; record
- * sustained segments while REC.
+ * Live ToF synth only in MODE_SYNTH. Synth tape on any track replays whenever
+ * that track was recorded in MODE_SYNTH, independent of the current global mode.
  */
 static void synth_tof_apply_gesture(int64_t now_us)
 {
     if (!shared_state_lock()) {
-        return;
-    }
-
-    if (g_state.mode != MODE_SYNTH) {
-        shared_state_unlock();
         return;
     }
 
@@ -345,30 +340,9 @@ static void synth_tof_apply_gesture(int64_t now_us)
         tr = 0;
     }
 
-    int best_idx    = -1;
-    uint16_t best_d = UINT16_MAX;
-
-    for (int i = 0; i < NUM_TOF_SENSORS; i++) {
-        int64_t t_up = s_last_update_us[i].load();
-        if (t_up <= 0 || (now_us - t_up) > SYNTH_MAX_READING_AGE_US) {
-            continue;
-        }
-        uint16_t d = s_last_dist_mm[i].load();
-        if (d == 0 || d > DIST_RANGE_MAX) {
-            continue;
-        }
-        if (d < 40) {
-            continue;
-        }
-        if (d < best_d) {
-            best_d = d;
-            best_idx = i;
-        }
-    }
-
-    bool        rec_now = g_state.is_recording;
-    uint32_t    loop_len = loop_recorder_loop_length_us();
-    uint32_t    cap = 0;
+    bool     rec_now  = g_state.is_recording;
+    uint32_t loop_len = loop_recorder_loop_length_us();
+    uint32_t cap      = 0;
 
     if (rec_now) {
         cap = loop_recorder_capture_time_us();
@@ -379,12 +353,44 @@ static void synth_tof_apply_gesture(int64_t now_us)
     }
     s_synrec_was_rec = rec_now;
 
-    track_params_t *tp = &g_state.tracks[tr];
-    tp->pitch_bend    = g_state.master_detune_sem * 0.5f;
+    if (g_state.mode != MODE_SYNTH) {
+        s_synrec_active = false;
+    }
 
-    if (best_idx >= 0) {
-        uint8_t midi = SYNTH_C_MAJOR_MIDI[best_idx];
-        tp->pitch = midi;
+    int      best_idx = -1;
+    uint16_t best_d   = UINT16_MAX;
+
+    if (g_state.mode == MODE_SYNTH) {
+        for (int i = 0; i < NUM_TOF_SENSORS; i++) {
+            int64_t t_up = s_last_update_us[i].load();
+            if (t_up <= 0 || (now_us - t_up) > SYNTH_MAX_READING_AGE_US) {
+                continue;
+            }
+            uint16_t d = s_last_dist_mm[i].load();
+            if (d == 0 || d > DIST_RANGE_MAX) {
+                continue;
+            }
+            if (d < 40) {
+                continue;
+            }
+            if (d < best_d) {
+                best_d = d;
+                best_idx = i;
+            }
+        }
+    }
+
+    const bool live_hand = (g_state.mode == MODE_SYNTH && best_idx >= 0);
+    uint32_t   ph        = loop_recorder_playhead_us();
+
+    for (int t = 0; t < NUM_TRACKS; t++) {
+        g_state.tracks[t].pitch_bend = g_state.master_detune_sem * 0.5f;
+    }
+
+    if (live_hand) {
+        track_params_t *tp = &g_state.tracks[tr];
+        uint8_t         midi = SYNTH_C_MAJOR_MIDI[best_idx];
+        tp->pitch           = midi;
 
         float t = ((float)best_d - (float)SYNTH_VOL_MM_CLOSE) /
                   (float)(SYNTH_VOL_MM_FAR - SYNTH_VOL_MM_CLOSE);
@@ -407,66 +413,50 @@ static void synth_tof_apply_gesture(int64_t now_us)
 
         if (rec_now) {
             if (!s_synrec_active) {
-                s_synrec_active      = true;
-                s_synrec_start       = cap;
-                s_synrec_midi        = midi;
-                s_synrec_vel         = vel8;
-                s_synrec_track       = tr;
-                s_synrec_first_take  = (loop_len == 0);
+                s_synrec_active     = true;
+                s_synrec_start      = cap;
+                s_synrec_midi       = midi;
+                s_synrec_vel        = vel8;
+                s_synrec_track      = tr;
+                s_synrec_first_take = (loop_len == 0);
             } else if (midi != s_synrec_midi) {
                 synth_commit_segment(cap, loop_len, s_synrec_first_take);
-                s_synrec_active      = true;
-                s_synrec_start       = cap;
-                s_synrec_midi        = midi;
-                s_synrec_vel         = vel8;
-                s_synrec_track       = tr;
-                s_synrec_first_take  = (loop_len == 0);
+                s_synrec_active     = true;
+                s_synrec_start      = cap;
+                s_synrec_midi       = midi;
+                s_synrec_vel        = vel8;
+                s_synrec_track      = tr;
+                s_synrec_first_take = (loop_len == 0);
             }
         }
-    } else {
-        if (rec_now && s_synrec_active) {
-            synth_commit_segment(cap, loop_len, s_synrec_first_take);
-        }
-
-        uint32_t ph = loop_recorder_playhead_us();
-        uint8_t  pm = 60;
-        float    pv = 0.0f;
-        if (loop_len > 0 &&
-            loop_recorder_synth_playback_at(tr, ph, &pm, &pv)) {
-            tp->pitch  = pm;
-            tp->volume = pv;
-        } else {
-            tp->volume = 0.0f;
-        }
+    } else if (g_state.mode == MODE_SYNTH && rec_now && s_synrec_active) {
+        synth_commit_segment(cap, loop_len, s_synrec_first_take);
     }
 
     if (rec_now) {
         s_synrec_last_cap = cap;
     }
 
-    /* Other tracks: tape only (no live ToF). */
-    if (loop_len > 0) {
-        uint32_t ph = loop_recorder_playhead_us();
-        for (int t = 0; t < NUM_TRACKS; t++) {
-            if (t == tr) {
-                continue;
-            }
-            track_params_t *ttp = &g_state.tracks[t];
-            ttp->pitch_bend    = g_state.master_detune_sem * 0.5f;
-            uint8_t pm = 60;
-            float pv = 0.0f;
-            if (loop_recorder_synth_playback_at(t, ph, &pm, &pv)) {
-                ttp->pitch  = pm;
-                ttp->volume = pv;
-            } else {
-                ttp->volume = 0.0f;
-            }
+    uint8_t pm = 60;
+    float   pv = 0.0f;
+
+    for (int t = 0; t < NUM_TRACKS; t++) {
+        if (live_hand && t == tr) {
+            continue;
         }
-    } else {
-        for (int t = 0; t < NUM_TRACKS; t++) {
-            if (t != tr) {
-                g_state.tracks[t].volume = 0.0f;
-            }
+        if (!loop_recorder_track_recorded_as_synth(t)) {
+            g_state.tracks[t].volume = 0.0f;
+            continue;
+        }
+        if (loop_len == 0) {
+            g_state.tracks[t].volume = 0.0f;
+            continue;
+        }
+        if (loop_recorder_synth_playback_at(t, ph, &pm, &pv)) {
+            g_state.tracks[t].pitch  = pm;
+            g_state.tracks[t].volume = pv;
+        } else {
+            g_state.tracks[t].volume = 0.0f;
         }
     }
 
@@ -488,15 +478,10 @@ static bool process_reading(int idx, uint16_t distance_mm, int64_t now_us)
         return false;
     }
 
-    /* Synth mode: continuous pitch/volume from gestures — no sample triggers. */
-    if (g_state.mode == MODE_SYNTH) {
-        st.prev_dist_mm = distance_mm;
-        st.prev_time_us = now_us;
-        return false;
-    }
-
-    /* Drum mode: only the physical drum pads fire samples; ToFs stay idle. */
-    if (g_state.mode == MODE_DRUMS) {
+    /* ToF → sampler only in SAMPLE mode (instrument swipes). SYNTH uses the
+     * continuous path in synth_tof_apply_gesture(); DRUMS and other modes
+     * use buttons / transport only — no ToF sample hits. */
+    if (g_state.mode != MODE_SAMPLE) {
         st.prev_dist_mm = distance_mm;
         st.prev_time_us = now_us;
         return false;
