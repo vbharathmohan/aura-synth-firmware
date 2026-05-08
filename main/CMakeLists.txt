@@ -45,6 +45,10 @@ target_add_binary_data(${COMPONENT_LIB} "../samples/snare.wav"          BINARY)
 target_add_binary_data(${COMPONENT_LIB} "../samples/hihat.wav"          BINARY)
 target_add_binary_data(${COMPONENT_LIB} "../samples/clap.wav"          BINARY)
 
+
+target_add_binary_data(${COMPONENT_LIB} "../samples/levels_mono_22050.wav"          BINARY)
+
+
 # Melodic instruments (ToF array plays these in C-major).
 target_add_binary_data(${COMPONENT_LIB} "../samples/piano_c4.wav"       BINARY)
 target_add_binary_data(${COMPONENT_LIB} "../samples/steel_drum_c4.wav"  BINARY)

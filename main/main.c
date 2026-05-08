@@ -26,12 +26,11 @@
 
 /* ====================== MODE SELECT ============================== */
 /* #define DEMO_MODE*/
-#define INTEGRATION_MODE 
+#define INTEGRATION_MODE
 /* ================================================================== */
 
 #if defined(DEMO_MODE) && defined(INTEGRATION_MODE)
 #endif
-
 
 #include <stdio.h>
 #include <math.h>
@@ -67,31 +66,33 @@ static const char *TAG = "aura_synth";
  * name so files starting with a digit (808_c1.wav) compile cleanly. */
 
 /* Drum kit */
-extern const uint8_t kick_wav_start[]            asm("_binary_kick_wav_start");
-extern const uint8_t kick_wav_end[]              asm("_binary_kick_wav_end");
-extern const uint8_t snare_wav_start[]           asm("_binary_snare_wav_start");
-extern const uint8_t snare_wav_end[]             asm("_binary_snare_wav_end");
-extern const uint8_t hihat_wav_start[]           asm("_binary_hihat_wav_start");
-extern const uint8_t hihat_wav_end[]             asm("_binary_hihat_wav_end");
-extern const uint8_t clap_wav_start[]           asm("_binary_clap_wav_start");
-extern const uint8_t clap_wav_end[]             asm("_binary_clap_wav_end");
+extern const uint8_t kick_wav_start[] asm("_binary_kick_wav_start");
+extern const uint8_t kick_wav_end[] asm("_binary_kick_wav_end");
+extern const uint8_t snare_wav_start[] asm("_binary_snare_wav_start");
+extern const uint8_t snare_wav_end[] asm("_binary_snare_wav_end");
+extern const uint8_t hihat_wav_start[] asm("_binary_hihat_wav_start");
+extern const uint8_t hihat_wav_end[] asm("_binary_hihat_wav_end");
+extern const uint8_t clap_wav_start[] asm("_binary_clap_wav_start");
+extern const uint8_t clap_wav_end[] asm("_binary_clap_wav_end");
 
 /* Melodic instruments (each is one octave of C natural) */
-extern const uint8_t piano_c4_wav_start[]        asm("_binary_piano_c4_wav_start");
-extern const uint8_t piano_c4_wav_end[]          asm("_binary_piano_c4_wav_end");
-extern const uint8_t steel_drum_c4_wav_start[]   asm("_binary_steel_drum_c4_wav_start");
-extern const uint8_t steel_drum_c4_wav_end[]     asm("_binary_steel_drum_c4_wav_end");
-extern const uint8_t trumpet_c6_wav_start[]      asm("_binary_trumpet_c6_wav_start");
-extern const uint8_t trumpet_c6_wav_end[]        asm("_binary_trumpet_c6_wav_end");
-extern const uint8_t bass_808_wav_start[]        asm("_binary_808_c1_wav_start");
-extern const uint8_t bass_808_wav_end[]          asm("_binary_808_c1_wav_end");
+extern const uint8_t piano_c4_wav_start[] asm("_binary_piano_c4_wav_start");
+extern const uint8_t piano_c4_wav_end[] asm("_binary_piano_c4_wav_end");
+extern const uint8_t steel_drum_c4_wav_start[] asm("_binary_steel_drum_c4_wav_start");
+extern const uint8_t steel_drum_c4_wav_end[] asm("_binary_steel_drum_c4_wav_end");
+extern const uint8_t trumpet_c6_wav_start[] asm("_binary_trumpet_c6_wav_start");
+extern const uint8_t trumpet_c6_wav_end[] asm("_binary_trumpet_c6_wav_end");
+extern const uint8_t bass_808_wav_start[] asm("_binary_808_c1_wav_start");
+extern const uint8_t bass_808_wav_end[] asm("_binary_808_c1_wav_end");
+extern const uint8_t levels_wav_start[] asm("_binary_levels_mono_22050_wav_start");
+extern const uint8_t levels_wav_end[] asm("_binary_levels_mono_22050_wav_end");
 
 /* ------------------------------------------------------------------ */
 /* Master delay effect (allocated once; toggled via mix knob)          */
 /* ------------------------------------------------------------------ */
 
 static delay_t s_master_delay;
-static bool    s_master_delay_ready = false;
+static bool s_master_delay_ready = false;
 
 /* ------------------------------------------------------------------ */
 /* Sampler registration                                                */
@@ -102,21 +103,23 @@ static void register_all_samples(void)
     /* Slot indices live in shared_state.h so sensor_task and mixer
      * agree on the mapping. */
     sampler_register(SAMPLE_SLOT_PIANO,
-                     "piano",     piano_c4_wav_start,      piano_c4_wav_end);
+                     "piano", piano_c4_wav_start, piano_c4_wav_end);
     sampler_register(SAMPLE_SLOT_STEEL_DRUM,
-                     "steeldrm",  steel_drum_c4_wav_start, steel_drum_c4_wav_end);
+                     "steeldrm", steel_drum_c4_wav_start, steel_drum_c4_wav_end);
     sampler_register(SAMPLE_SLOT_TRUMPET,
-                     "trumpet",   trumpet_c6_wav_start,    trumpet_c6_wav_end);
+                     "trumpet", trumpet_c6_wav_start, trumpet_c6_wav_end);
     sampler_register(SAMPLE_SLOT_808_BASS,
-                     "808bass",   bass_808_wav_start,      bass_808_wav_end);
+                     "808bass", bass_808_wav_start, bass_808_wav_end);
     sampler_register(SAMPLE_SLOT_KICK,
-                     "kick",      kick_wav_start,          kick_wav_end);
+                     "kick", kick_wav_start, kick_wav_end);
     sampler_register(SAMPLE_SLOT_SNARE,
-                     "snare",     snare_wav_start,         snare_wav_end);
+                     "snare", snare_wav_start, snare_wav_end);
     sampler_register(SAMPLE_SLOT_HIHAT,
-                     "hihat",     hihat_wav_start,         hihat_wav_end);
+                     "hihat", hihat_wav_start, hihat_wav_end);
     sampler_register(SAMPLE_SLOT_CLAP,
-                     "clap",      clap_wav_start,          clap_wav_end);
+                     "clap", clap_wav_start, clap_wav_end);
+    sampler_register(SAMPLE_SLOT_LEVELS,
+                     "levels", levels_wav_start, levels_wav_end);
 }
 
 /* ================================================================== */
@@ -124,7 +127,7 @@ static void register_all_samples(void)
 /* ================================================================== */
 #ifdef DEMO_MODE
 
-#define DEMO_INSTRUMENT_PERIOD_MS   10000   /* 10 s per instrument */
+#define DEMO_INSTRUMENT_PERIOD_MS 10000 /* 10 s per instrument */
 
 static void demo_mode_task(void *param)
 {
@@ -133,14 +136,19 @@ static void demo_mode_task(void *param)
              xPortGetCoreID(), DEMO_INSTRUMENT_PERIOD_MS);
 
     const instrument_t cycle[] = {
-        INST_PIANO, INST_STEEL_DRUM, INST_TRUMPET, INST_808_BASS,
+        INST_PIANO,
+        INST_STEEL_DRUM,
+        INST_TRUMPET,
+        INST_808_BASS,
     };
     const char *names[] = {"piano", "steel drum", "trumpet", "808 bass"};
     const int N = sizeof(cycle) / sizeof(cycle[0]);
 
     int idx = 0;
-    while (1) {
-        if (shared_state_lock()) {
+    while (1)
+    {
+        if (shared_state_lock())
+        {
             g_state.active_instrument = cycle[idx];
             shared_state_unlock();
         }
@@ -173,16 +181,20 @@ static void master_fx_init(void)
     mixer_set_master_fx(0, fx_biquad, &s_master_biquad);
 
     size_t psram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
-    if (psram > 0) {
+    if (psram > 0)
+    {
         if (delay_init(&s_master_delay,
                        /*delay_ms=*/280.0f,
                        /*feedback=*/0.35f,
-                       /*mix=*/0.0f,           /* start dry */
-                       /*sr=*/(float)SAMPLE_RATE)) {
+                       /*mix=*/0.0f, /* start dry */
+                       /*sr=*/(float)SAMPLE_RATE))
+        {
             s_master_delay_ready = true;
             mixer_set_master_fx(1, fx_delay, &s_master_delay);
         }
-    } else {
+    }
+    else
+    {
         ESP_LOGW(TAG, "No PSRAM detected — delay effect disabled");
     }
 }
@@ -210,11 +222,19 @@ void app_main(void)
     ESP_LOGI(TAG, "[1/8] Shared state OK");
 
     /* 2. Block pool */
-    if (!audio_pool_init()) { ESP_LOGE(TAG, "Block pool failed"); return; }
+    if (!audio_pool_init())
+    {
+        ESP_LOGE(TAG, "Block pool failed");
+        return;
+    }
     ESP_LOGI(TAG, "[2/8] Block pool OK");
 
     /* 3. I2S */
-    if (!i2s_output_init()) { ESP_LOGE(TAG, "I2S failed"); return; }
+    if (!i2s_output_init())
+    {
+        ESP_LOGE(TAG, "I2S failed");
+        return;
+    }
     ESP_LOGI(TAG, "[3/8] I2S OK");
 
     /* 4. Sampler + WAVs */
@@ -229,16 +249,20 @@ void app_main(void)
              s_master_delay_ready ? ", delay armed" : "");
 
     /* 6. Loop recorder (PSRAM-only). Future feature; safe to init now. */
-    if (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) > 0) {
+    if (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) > 0)
+    {
         loop_recorder_init();
     }
     ESP_LOGI(TAG, "[6/8] Loop recorder OK");
 
     /* 7. LED hardware (needed before sensor init so ready status can
      * illuminate per-sensor chunks during startup). */
-    if (!led_task_init()) {
+    if (!led_task_init())
+    {
         ESP_LOGW(TAG, "[7/8] LEDs NOT ready");
-    } else {
+    }
+    else
+    {
         led_task_boot_clear();
         ESP_LOGI(TAG, "[7/8] LEDs OK");
     }
@@ -250,9 +274,12 @@ void app_main(void)
 
     /* 8. Sensors. During init each "ToF ready" log lights one LED chunk.
      * After all sensors are processed: full-strip white flash then clear. */
-    if (!sensor_task_init()) {
+    if (!sensor_task_init())
+    {
         ESP_LOGW(TAG, "[8/8] Sensors NOT ready — silent gesture input");
-    } else {
+    }
+    else
+    {
         led_task_boot_flash_white(120, 250);
         led_task_boot_clear();
         sensor_task_start();
@@ -280,4 +307,3 @@ void app_main(void)
     ESP_LOGI(TAG, "");
     ESP_LOGI(TAG, "Boot complete — swipe across the ToF array to play.");
 }
-

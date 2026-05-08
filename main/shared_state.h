@@ -55,6 +55,7 @@ extern "C" {
 #define SAMPLE_SLOT_SNARE       5
 #define SAMPLE_SLOT_HIHAT       6
 #define SAMPLE_SLOT_CLAP        7
+#define SAMPLE_SLOT_LEVELS      8
 
 #define NUM_INSTRUMENTS         4    /* piano, steel drum, trumpet, 808 */
 #define NUM_DRUM_PADS           4    /* kick, snare, hihat, clap */
@@ -190,8 +191,9 @@ typedef struct {
     bool     is_playing;         /* current state (managed by loop_recorder) */
     int      loop_length;        /* milliseconds; 0 = no loop set yet */
     int      playhead;           /* current loop position in milliseconds */
-
-} shared_state_t;
+    /* Levels sample controls (kick/snare in non-drum modes) */
+    bool     levels_cue_pressed; /* Kick button held -> cue levels sample */
+    bool     levels_toggle_pressed; /* Snare press edge -> toggle levels play/pause */} shared_state_t;
 
 /* ------------------------------------------------------------------ */
 /* Note event queue                                                    */
