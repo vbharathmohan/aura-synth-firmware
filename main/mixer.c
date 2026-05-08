@@ -38,8 +38,6 @@ static void     *s_track_fx_params[NUM_TRACKS][MAX_TRACK_FX];
 static effect_fn s_master_fx[MAX_MASTER_FX];
 static void     *s_master_fx_params[MAX_MASTER_FX];
 
-static float s_master_lfo_phase;
-
 /* ------------------------------------------------------------------ */
 /* Init                                                                */
 /* ------------------------------------------------------------------ */
@@ -63,7 +61,6 @@ bool mixer_init(float sample_rate)
     memset(s_track_fx_params, 0, sizeof(s_track_fx_params));
     memset(s_master_fx, 0, sizeof(s_master_fx));
     memset(s_master_fx_params, 0, sizeof(s_master_fx_params));
-    s_master_lfo_phase = 0.0f;
 
     /* Wire up the default per-track effect: biquad LP filter in slot 0 */
     for (int i = 0; i < NUM_TRACKS; i++) {
@@ -109,7 +106,7 @@ audio_block_t *mixer_process(const shared_state_t *snap)
     for (int t = 0; t < NUM_TRACKS; t++) {
         const track_params_t *tp = &snap->tracks[t];
 
-        /* Panel dial drives sine/saw morph globally in synth mode. */
+        /* Panel dials (wavemix + LFO) apply only in MODE_SYNTH. */
         track_params_t tp_eff = *tp;
         if (snap->mode == MODE_SYNTH) {
             float w = snap->master_waveform_mix;
@@ -120,6 +117,7 @@ audio_block_t *mixer_process(const shared_state_t *snap)
                 w = 1.0f;
             }
             tp_eff.waveform_mix = w;
+            tp_eff.lfo_rate     = 0.0f; /* LFO disabled */
         }
 
         synth_voice_set_params(&s_voices[t], &tp_eff);
@@ -174,28 +172,6 @@ audio_block_t *mixer_process(const shared_state_t *snap)
 
     /* --- Apply master volume --- */
     audio_block_gain(mix, snap->master_volume);
-
-    /* --- Master LFO tremolo (“womp”) — 0..10 Hz from panel --- */
-    float lfo_hz = snap->master_lfo_hz;
-    if (lfo_hz < 0.0f) {
-        lfo_hz = 0.0f;
-    }
-    if (lfo_hz > 10.0f) {
-        lfo_hz = 10.0f;
-    }
-    if (lfo_hz > 0.02f) {
-        float depth = (lfo_hz / 10.0f) * 0.38f;
-        const float inc = 2.0f * M_PI * lfo_hz / s_sample_rate;
-        for (int i = 0; i < BLOCK_SAMPLES; i++) {
-            float mod = 1.0f - depth * (0.5f + 0.5f * sinf(s_master_lfo_phase));
-            mix->L[i] = (int32_t)((float)mix->L[i] * mod);
-            mix->R[i] = (int32_t)((float)mix->R[i] * mod);
-            s_master_lfo_phase += inc;
-            if (s_master_lfo_phase > 2.0f * M_PI) {
-                s_master_lfo_phase -= 2.0f * M_PI;
-            }
-        }
-    }
 
     /* --- Sync master FX parameters from shared state (panel sliders) --- */
     if (s_master_fx[0] != NULL && s_master_fx_params[0] != NULL &&

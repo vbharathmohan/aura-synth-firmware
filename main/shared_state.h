@@ -174,7 +174,7 @@ typedef struct {
     float    master_delay_mix;   /* legacy alias: kept in sync with master_reverb */
     float    master_playback_rate; /* global speed mult; panel keeps 1.0 (reserved) */
     float    master_detune_sem;    /* ±1 semitone pitch bend (panel slider 2 / GPIO 39) */
-    float    master_lfo_hz;        /* 0..10 Hz tremolo (LFO dial / GPIO 37) */
+    float    master_lfo_hz;        /* reserved; firmware keeps 0 (LFO off) */
     /** 0 = sine, 1 = saw (wave-morph dial; GPIO 35 today, mux “wave” channel later). */
     float    master_waveform_mix;
     float    master_reverb;        /* 0..1 wet — forced 0 until echo mux channel wired */

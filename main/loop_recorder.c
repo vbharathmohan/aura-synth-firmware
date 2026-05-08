@@ -194,16 +194,37 @@ void loop_recorder_deinit(void)
 
 void loop_recorder_on_live_event(const note_event_t *evt)
 {
-    if (!s_recording || evt == NULL) return;
+    if (evt == NULL) {
+        return;
+    }
 
     /* Never re-record playback-originated events. */
-    if (evt->source == 20) return;
+    if (evt->source == 20) {
+        return;
+    }
 
-    if (s_record_track < 0 || s_record_track >= NUM_TRACKS) return;
-    if (s_tracks[s_record_track] == NULL) return;
+    const bool synth_seg =
+        (evt->source == NOTE_SOURCE_SYNTH_NOTE && evt->duration_us > 0u);
 
-    int count = s_event_count[s_record_track];
-    if (count >= MAX_EVENTS_PER_TRACK) return; /* drop if full */
+    /* Sample hits: only while REC is armed. Synth segments may arrive one sensor
+     * poll after REC stops (commit after is_recording flips) — still capture them
+     * using evt->track and evt->tape_time_us. */
+    if (!synth_seg && !s_recording) {
+        return;
+    }
+
+    int tr = synth_seg ? (int)evt->track : s_record_track;
+    if (tr < 0 || tr >= NUM_TRACKS) {
+        return;
+    }
+    if (s_tracks[tr] == NULL) {
+        return;
+    }
+
+    int count = s_event_count[tr];
+    if (count >= MAX_EVENTS_PER_TRACK) {
+        return; /* drop if full */
+    }
 
     int64_t now_us = esp_timer_get_time();
     uint32_t t_us;
@@ -214,17 +235,21 @@ void loop_recorder_on_live_event(const note_event_t *evt)
     } else if (s_loop_duration_us == 0) {
         /* First take: time since record start, capped at MAX_LOOP_US. */
         int64_t dt = now_us - s_record_start_us;
-        if (dt < 0) dt = 0;
-        if (dt >= MAX_LOOP_US) dt = MAX_LOOP_US - 1;
+        if (dt < 0) {
+            dt = 0;
+        }
+        if (dt >= MAX_LOOP_US) {
+            dt = MAX_LOOP_US - 1;
+        }
         t_us = (uint32_t)dt;
     } else {
         /* Overdub: record at current loop position. */
         t_us = current_loop_pos_us(now_us);
     }
 
-    s_tracks[s_record_track][count].t_us = t_us;
-    s_tracks[s_record_track][count].evt = *evt;
-    s_event_count[s_record_track] = count + 1;
+    s_tracks[tr][count].t_us = t_us;
+    s_tracks[tr][count].evt = *evt;
+    s_event_count[tr] = count + 1;
 }
 
 /* Decide whether a recorded event with timestamp t_us falls inside the

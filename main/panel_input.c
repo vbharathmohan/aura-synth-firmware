@@ -43,15 +43,11 @@
  *
  * ANALOG (middle wiper → GPIO; ends → 3.3 V and GND):
  *   Slider 1 (GPIO 34, A2): master volume 0 .. 1
- *   Slider 2 (GPIO 39, A3): pitch bend -1 .. +1 semitone (center = in tune)
- *   Dial — filter    (GPIO 36, A4): master LPF cutoff (MASTER_FILTER_*)
- *   Dial — wave morph (GPIO 35):    sine → saw (master_waveform_mix 0 .. 1)
- *   Dial — LFO       (GPIO 37):     0 .. 10 Hz tremolo
- *
- *   A multiplexer will eventually bring four panel dials (filter, wave, LFO,
- *   echo) onto one MCU ADC line — remap channels in this file only when that
- *   lands. Echo / delay mix stays 0 in firmware until the mux “echo” input
- *   is wired (GPIO 35 is often VBAT on Feather; use a normal divider wiper).
+ *   Slider 2 (GPIO 39, A3): metronome LED BPM
+ *   Dial — filter (GPIO 36, A4): master LPF cutoff (MASTER_FILTER_*)
+ *   ADS1115 (I2C), address 0x48, ALERT grounded:
+ *     A1 -> Echo (delay mix)
+ *     A2 -> Wave morph (sine -> saw)
  *
  * RESERVED ELSEWHERE (do not use for matrix):
  *   4,25,26 = I2S; 20,22 = I2C ToF; 12,13,14 = 74HC595; 27 = XSMT; 33 = WS2812
@@ -62,6 +58,7 @@
 
 #include "panel_input.h"
 #include "shared_state.h"
+#include "led_task.h"
 
 #include <math.h>
 #include <string.h>
@@ -69,6 +66,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
+#include "driver/i2c.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_log.h"
 #include "esp_rom_sys.h"
@@ -86,10 +84,17 @@ static const char *TAG = "panel_input";
 #define COL2_PIN    GPIO_NUM_19
 
 #define SLIDER_VOL_ADC_CHANNEL    ADC_CHANNEL_6   /* GPIO 34 — volume */
-#define SLIDER_BEND_ADC_CHANNEL   ADC_CHANNEL_3   /* GPIO 39 — ±1 semitone bend */
+#define SLIDER_BEND_ADC_CHANNEL   ADC_CHANNEL_3   /* GPIO 39 — LED BPM */
 #define DIAL_FILTER_ADC_CHANNEL   ADC_CHANNEL_0   /* GPIO 36, A4 — filter */
-#define DIAL_LFO_ADC_CHANNEL      ADC_CHANNEL_1   /* GPIO 37 — LFO */
-#define DIAL_WAVEMIX_ADC_CHANNEL  ADC_CHANNEL_7   /* GPIO 35 — sine/saw; mux “wave” later */
+/* ADS1115 single-ended inputs in use: A1 Echo, A2 wave mix */
+
+#define ADS1115_ADDR              0x48
+#define ADS1115_REG_CONV          0x00
+#define ADS1115_REG_CONFIG        0x01
+#define ADS1115_I2C_PORT          I2C_NUM_0
+
+#define LED_BPM_MIN               40
+#define LED_BPM_MAX               240
 
 #define NUM_ROWS    3
 #define NUM_COLS    3
@@ -134,10 +139,88 @@ static bool     s_inited;
 static int64_t  s_last_scan_us;
 
 static float    s_vol_ema;     /* slider1 → master volume */
-static float    s_bend_ema;    /* slider2 → pitch bend (normalized; 0.5 = center) */
+static float    s_bend_ema;    /* slider2 → metronome BPM */
 static float    s_filt_ema;    /* dial GPIO36 → LPF cutoff */
-static float    s_lfo_ema;     /* dial → LFO Hz */
-static float    s_wav_ema;     /* dial GPIO35 → waveform mix */
+static float    s_echo_ema;    /* ADS A1 -> echo mix */
+static float    s_wav_ema;     /* ADS A2 -> waveform mix */
+
+/* MUX[14:12]: 100..111 = AIN0..AIN3 single-ended vs GND (see ADS1115 config register). */
+static bool ads1115_read_config(uint16_t *cfg_out)
+{
+    if (cfg_out == NULL) {
+        return false;
+    }
+    uint8_t reg = ADS1115_REG_CONFIG;
+    uint8_t r[2];
+    if (i2c_master_write_read_device(ADS1115_I2C_PORT, ADS1115_ADDR, &reg, 1, r, 2,
+                                     pdMS_TO_TICKS(10)) != ESP_OK) {
+        return false;
+    }
+    *cfg_out = (uint16_t)(((uint16_t)r[0] << 8) | r[1]);
+    return true;
+}
+
+/* After starting single-shot conversion, OS (bit 15) is 0 while converting, 1 when done. */
+static bool ads1115_wait_conversion_done(void)
+{
+    /* 860 SPS ≈ 1.16 ms; wait once then poll lightly so we do not spam I2C. */
+    esp_rom_delay_us(1200);
+    for (int i = 0; i < 15; i++) {
+        uint16_t cfg;
+        if (!ads1115_read_config(&cfg)) {
+            return false;
+        }
+        if ((cfg & 0x8000u) != 0) {
+            return true;
+        }
+        esp_rom_delay_us(100);
+    }
+    return false;
+}
+
+static bool ads1115_read_norm_0_1(int channel, float *out, int16_t *raw_out)
+{
+    if (out == NULL || channel < 0 || channel > 3) {
+        return false;
+    }
+
+    /* ADS1115 single-shot, single-ended channel, +/-4.096V, 860 SPS, comp off. */
+    uint16_t cfg = (uint16_t)(0x8000u | (((uint16_t)(0x4 + (uint16_t)channel)) << 12) |
+                              (0x1u << 9) | (1u << 8) | (0x7u << 5) | 0x3u);
+    uint8_t w[3] = {
+        ADS1115_REG_CONFIG,
+        (uint8_t)(cfg >> 8),
+        (uint8_t)(cfg & 0xFF),
+    };
+    if (i2c_master_write_to_device(ADS1115_I2C_PORT, ADS1115_ADDR, w, sizeof(w),
+                                   pdMS_TO_TICKS(10)) != ESP_OK) {
+        return false;
+    }
+
+    if (!ads1115_wait_conversion_done()) {
+        return false;
+    }
+
+    uint8_t reg = ADS1115_REG_CONV;
+    uint8_t r[2] = {0, 0};
+    if (i2c_master_write_read_device(ADS1115_I2C_PORT, ADS1115_ADDR, &reg, 1, r, 2,
+                                     pdMS_TO_TICKS(10)) != ESP_OK) {
+        return false;
+    }
+
+    int16_t raw = (int16_t)(((uint16_t)r[0] << 8) | r[1]);
+    if (raw_out != NULL) {
+        *raw_out = raw;
+    }
+    if (raw < 0) {
+        raw = 0;
+    }
+    float n = (float)raw / 32767.0f;
+    if (n < 0.0f) n = 0.0f;
+    if (n > 1.0f) n = 1.0f;
+    *out = n;
+    return true;
+}
 
 static void matrix_gpio_init(void)
 {
@@ -209,14 +292,11 @@ static void adc_hw_init(void)
     ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, SLIDER_VOL_ADC_CHANNEL, &chan_cfg));
     ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, SLIDER_BEND_ADC_CHANNEL, &chan_cfg));
     ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, DIAL_FILTER_ADC_CHANNEL, &chan_cfg));
-    ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, DIAL_LFO_ADC_CHANNEL, &chan_cfg));
-    ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, DIAL_WAVEMIX_ADC_CHANNEL, &chan_cfg));
 
     ESP_LOGI(TAG,
-             "ADC: vol=GPIO34 ch%d | bend=GPIO39 ch%d | filt=GPIO36 ch%d | "
-             "lfo=GPIO37 ch%d | wave=GPIO35 ch%d",
-             SLIDER_VOL_ADC_CHANNEL, SLIDER_BEND_ADC_CHANNEL, DIAL_FILTER_ADC_CHANNEL,
-             DIAL_LFO_ADC_CHANNEL, DIAL_WAVEMIX_ADC_CHANNEL);
+             "ADC local: vol=GPIO34 ch%d | BPM=GPIO39 ch%d | filt=GPIO36 ch%d",
+             SLIDER_VOL_ADC_CHANNEL, SLIDER_BEND_ADC_CHANNEL, DIAL_FILTER_ADC_CHANNEL);
+    ESP_LOGI(TAG, "ADS1115: addr=0x%02X A1=Echo A2=Wave", ADS1115_ADDR);
 }
 
 /* Cycle order for physical cycle-mode button (BTN7): SAMPLE -> DRUMS -> SYNTH -> SAMPLE. */
@@ -358,7 +438,7 @@ static void handle_button_edges(void)
 
 static void read_analog_and_apply(void)
 {
-    int rv = 0, rr = 0, rf = 0, rl = 0, rw = 0;
+    int rv = 0, rr = 0, rf = 0;
     if (adc_oneshot_read(s_adc, SLIDER_VOL_ADC_CHANNEL, &rv) != ESP_OK) {
         return;
     }
@@ -366,12 +446,6 @@ static void read_analog_and_apply(void)
         return;
     }
     if (adc_oneshot_read(s_adc, DIAL_FILTER_ADC_CHANNEL, &rf) != ESP_OK) {
-        return;
-    }
-    if (adc_oneshot_read(s_adc, DIAL_LFO_ADC_CHANNEL, &rl) != ESP_OK) {
-        return;
-    }
-    if (adc_oneshot_read(s_adc, DIAL_WAVEMIX_ADC_CHANNEL, &rw) != ESP_OK) {
         return;
     }
 
@@ -384,45 +458,45 @@ static void read_analog_and_apply(void)
     if (rf < 0) {
         rf = 0;
     }
-    if (rl < 0) {
-        rl = 0;
-    }
-    if (rw < 0) {
-        rw = 0;
-    }
 
     float nv = fminf(1.0f, (float)rv / 4095.0f);
     float nr = fminf(1.0f, (float)rr / 4095.0f);
     float nf = fminf(1.0f, (float)rf / 4095.0f);
-    float nl = fminf(1.0f, (float)rl / 4095.0f);
-    float nw = fminf(1.0f, (float)rw / 4095.0f);
+    float ne = s_echo_ema;
+    float nw = s_wav_ema;
+    (void)ads1115_read_norm_0_1(1, &ne, NULL); /* A1 -> Echo */
+    (void)ads1115_read_norm_0_1(2, &nw, NULL); /* A2 -> Wave */
 
     const float a = 0.25f;
     s_vol_ema  += (nv - s_vol_ema) * a;
     s_bend_ema += (nr - s_bend_ema) * a;
     s_filt_ema += (nf - s_filt_ema) * a;
-    s_lfo_ema  += (nl - s_lfo_ema) * a;
+    s_echo_ema += (ne - s_echo_ema) * a;
     s_wav_ema  += (nw - s_wav_ema) * a;
 
     float vol = s_vol_ema;
-    /* Slider2: pitch bend -1 .. +1 semitone (center = 0.5 normalized) */
-    float bend_sem = (s_bend_ema - 0.5f) * 2.0f;
-    float lfo_hz = s_lfo_ema * 10.0f;
+    /* Slider2: LED metronome BPM */
+    float bpmf = (float)LED_BPM_MIN + s_bend_ema * (float)(LED_BPM_MAX - LED_BPM_MIN);
+    int led_bpm = (int)(bpmf + 0.5f);
+    if (led_bpm < LED_BPM_MIN) led_bpm = LED_BPM_MIN;
+    if (led_bpm > LED_BPM_MAX) led_bpm = LED_BPM_MAX;
     float f_hz   = MASTER_FILTER_MIN_HZ +
                    s_filt_ema * (MASTER_FILTER_MAX_HZ - MASTER_FILTER_MIN_HZ);
     float wave   = s_wav_ema;
+    float echo   = s_echo_ema;
 
     if (shared_state_lock()) {
         g_state.master_volume         = vol;
         g_state.master_filter         = f_hz;
         g_state.master_playback_rate  = 1.0f;
-        g_state.master_detune_sem     = bend_sem;
-        g_state.master_lfo_hz         = lfo_hz;
+        g_state.master_detune_sem     = 0.0f; /* slider2 no longer controls pitch bend */
+        g_state.master_lfo_hz         = 0.0f; /* LFO disabled */
         g_state.master_waveform_mix   = wave;
-        g_state.master_reverb         = 0.0f;
-        g_state.master_delay_mix      = 0.0f; /* echo: mux channel not wired yet */
+        g_state.master_reverb         = echo;
+        g_state.master_delay_mix      = echo;
         shared_state_unlock();
     }
+    led_task_set_bpm(led_bpm);
 }
 
 void panel_input_init(void)
@@ -436,9 +510,9 @@ void panel_input_init(void)
     memset(btn_debounce, 0, sizeof(btn_debounce));
     memset(btn_prev, 0, sizeof(btn_prev));
     s_vol_ema  = 0.85f;
-    s_bend_ema = 0.5f; /* pitch bend 0 semitones */
+    s_bend_ema = 0.5f; /* midpoint BPM */
     s_filt_ema = 0.5f;
-    s_lfo_ema  = 0.0f;
+    s_echo_ema = 0.0f;
     s_wav_ema  = 0.0f; /* default sine */
     s_last_scan_us = 0;
 

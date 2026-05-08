@@ -495,6 +495,13 @@ static bool process_reading(int idx, uint16_t distance_mm, int64_t now_us)
         return false;
     }
 
+    /* Drum mode: only the physical drum pads fire samples; ToFs stay idle. */
+    if (g_state.mode == MODE_DRUMS) {
+        st.prev_dist_mm = distance_mm;
+        st.prev_time_us = now_us;
+        return false;
+    }
+
     /* Compute instantaneous approach speed */
     float dt_s = (now_us - st.prev_time_us) / 1.0e6f;
     if (dt_s < 0.001f) dt_s = 0.001f;
