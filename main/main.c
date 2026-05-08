@@ -54,6 +54,7 @@
 #ifdef INTEGRATION_MODE
 #include "panel_input.h"
 #endif
+#include "telemetry_uart.h"
 
 static const char *TAG = "aura_synth";
 
@@ -260,6 +261,10 @@ void app_main(void)
 
     /* Start normal LED rendering once boot animation is complete. */
     led_task_start();
+
+    /* One-way UART telemetry for external CrowPanel GUI (TX only). */
+    telemetry_uart_init();
+    telemetry_uart_start();
 
     /* Audio pipeline on Core 1 — highest priority */
     xTaskCreatePinnedToCore(audio_task_run, "audio", 8192, NULL,

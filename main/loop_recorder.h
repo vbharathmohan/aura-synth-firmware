@@ -56,6 +56,17 @@ uint32_t loop_recorder_playhead_us(void);
 bool loop_recorder_synth_playback_at(int track, uint32_t loop_pos_us,
                                      uint8_t *out_midi, float *out_vol);
 
+/**
+ * Rasterize this track’s tape into `buckets` slots spanning the loop.
+ * - Sample hits become single-bucket spikes (narrow bars in UI)
+ * - Synth segments fill a bucket range (solid bars in UI)
+ *
+ * Output values are event codes (0 = empty):
+ *   1 synth, 2 piano, 3 steel, 4 trumpet, 5 808,
+ *   6 kick, 7 snare, 8 hihat, 9 clap
+ */
+void loop_recorder_render_track_buckets(int track, uint8_t *out, int buckets);
+
 #ifdef __cplusplus
 }
 #endif

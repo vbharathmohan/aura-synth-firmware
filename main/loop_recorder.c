@@ -253,6 +253,29 @@ static inline bool sustain_covers_pos(uint32_t pos, uint32_t t0,
     return (pos >= t0) || (pos < end_mod);
 }
 
+static inline uint8_t event_code_from_tape(const rec_event_t *re)
+{
+    if (re == NULL) {
+        return 0;
+    }
+    const note_event_t *e = &re->evt;
+    if (e->source == NOTE_SOURCE_SYNTH_NOTE && e->duration_us > 0) {
+        return 1; /* synth */
+    }
+    /* Sampler slots: 0..3 instruments, 4..7 drums. */
+    switch (e->slot) {
+    case SAMPLE_SLOT_PIANO:       return 2;
+    case SAMPLE_SLOT_STEEL_DRUM:  return 3;
+    case SAMPLE_SLOT_TRUMPET:     return 4;
+    case SAMPLE_SLOT_808_BASS:    return 5;
+    case SAMPLE_SLOT_KICK:        return 6;
+    case SAMPLE_SLOT_SNARE:       return 7;
+    case SAMPLE_SLOT_HIHAT:       return 8;
+    case SAMPLE_SLOT_CLAP:        return 9;
+    default:                      return 0;
+    }
+}
+
 uint32_t loop_recorder_capture_time_us(void)
 {
     if (!s_recording) {
@@ -315,6 +338,70 @@ bool loop_recorder_synth_playback_at(int track, uint32_t loop_pos_us,
         }
     }
     return got;
+}
+
+void loop_recorder_render_track_buckets(int track, uint8_t *out, int buckets)
+{
+    if (out == NULL || buckets <= 0 || track < 0 || track >= NUM_TRACKS) {
+        return;
+    }
+    memset(out, 0, (size_t)buckets);
+
+    /* Choose an effective loop length even during first-take recording. */
+    uint32_t L = s_loop_duration_us;
+    if (L == 0 && s_recording) {
+        L = loop_recorder_capture_time_us();
+    }
+    if (L < 1000) {
+        return;
+    }
+
+    rec_event_t *tape = s_tracks[track];
+    int count = s_event_count[track];
+    if (tape == NULL || count <= 0) {
+        return;
+    }
+
+    for (int i = 0; i < count; i++) {
+        const rec_event_t *re = &tape[i];
+        uint8_t code = event_code_from_tape(re);
+        if (!code) {
+            continue;
+        }
+        uint32_t t0 = re->t_us;
+        if (t0 >= L) {
+            t0 %= L;
+        }
+
+        const note_event_t *e = &re->evt;
+        if (e->source == NOTE_SOURCE_SYNTH_NOTE && e->duration_us > 0) {
+            uint64_t tend = (uint64_t)t0 + (uint64_t)e->duration_us;
+            uint32_t t1 = (uint32_t)(tend % L);
+
+            int b0 = (int)((uint64_t)t0 * (uint64_t)buckets / L);
+            int b1 = (int)((uint64_t)t1 * (uint64_t)buckets / L);
+            if (b0 < 0) b0 = 0;
+            if (b0 >= buckets) b0 = buckets - 1;
+            if (b1 < 0) b1 = 0;
+            if (b1 >= buckets) b1 = buckets - 1;
+
+            if (tend <= L) {
+                if (b1 < b0) b1 = b0;
+                for (int b = b0; b <= b1 && b < buckets; b++) {
+                    out[b] = code;
+                }
+            } else {
+                for (int b = b0; b < buckets; b++) out[b] = code;
+                for (int b = 0; b <= b1 && b < buckets; b++) out[b] = code;
+            }
+        } else {
+            /* Sample spike. */
+            int b = (int)((uint64_t)t0 * (uint64_t)buckets / L);
+            if (b < 0) b = 0;
+            if (b >= buckets) b = buckets - 1;
+            out[b] = code;
+        }
+    }
 }
 
 void loop_recorder_update(shared_state_t *snap)

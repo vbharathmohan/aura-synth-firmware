@@ -14,6 +14,7 @@
 #include "sampler.h"
 #include "loop_recorder.h"
 #include "effects.h"
+#include "audio_scope.h"
 
 #include "esp_log.h"
 #include "esp_heap_caps.h"
@@ -116,6 +117,8 @@ void audio_task_run(void *param)
         audio_block_t *out = mixer_process(&snap);
 
         if (out != NULL) {
+            /* Feed GUI scope (left channel). */
+            audio_scope_push_i32(out->L, BLOCK_SAMPLES);
             /* 5. Convert int32 → interleaved int16 for I2S */
             audio_block_to_i2s(out, i2s_buf, 1);
             audio_free(out);
