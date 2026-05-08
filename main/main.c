@@ -12,7 +12,8 @@
  *
  *   INTEGRATION_MODE
  *       3×3 matrix + sliders/dials (see panel_input.c). Buttons, transport,
- *       volume, pitch bend, filter, and LFO are read there (polled with ToFs).
+ *       volume, BPM, filter, and ADS knobs are read there by a dedicated
+ *       control task on Core 0.
  *       ToFs play the current mode’s voice. There is no separate button task in main.
  *
  * DEMO_MODE omits the front panel; INTEGRATION_MODE initializes it at
@@ -50,6 +51,7 @@
 #include "effects.h"
 #include "sensor_task.h"
 #include "led_task.h"
+#include "audio_scope.h"
 #ifdef INTEGRATION_MODE
 #include "panel_input.h"
 #endif
@@ -93,6 +95,18 @@ extern const uint8_t levels_wav_end[] asm("_binary_levels_mono_22050_wav_end");
 
 static delay_t s_master_delay;
 static bool s_master_delay_ready = false;
+
+#ifdef INTEGRATION_MODE
+/* Keep dials/sliders responsive independent of ToF polling. */
+static void panel_task(void *param)
+{
+    (void)param;
+    while (1) {
+        panel_input_poll();
+        vTaskDelay(pdMS_TO_TICKS(2));
+    }
+}
+#endif
 
 /* ------------------------------------------------------------------ */
 /* Sampler registration                                                */
@@ -304,7 +318,7 @@ void app_main(void)
     xTaskCreatePinnedToCore(demo_mode_task, "demo_cycle", 3072, NULL,
                             4, NULL, 0);
 #else
-    /* INTEGRATION_MODE: pads + ADC run inside sensor_task (panel_input_poll). */
+    xTaskCreatePinnedToCore(panel_task, "panel", 3072, NULL, 7, NULL, 0);
 #endif
 
     ESP_LOGI(TAG, "");

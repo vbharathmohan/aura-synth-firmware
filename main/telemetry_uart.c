@@ -18,8 +18,9 @@ static const char *TAG = "telemetry_uart";
 
 #define TEL_UART_PORT         UART_NUM_1
 #define TEL_UART_TX_PIN       GPIO_NUM_8   /* user-approved dedicated TX pin */
-#define TEL_BAUD              921600
+#define TEL_BAUD              115200
 #define TEL_PERIOD_MS         50           /* 20 Hz */
+#define TEL_DETAIL_DIVIDER    2            /* heavy chunks at 10 Hz */
 
 #define TEL_BUCKETS           64
 #define TEL_SCOPE_POINTS      64
@@ -69,6 +70,7 @@ static void telemetry_task(void *param)
     char t3[TEL_BUCKETS + 1];
     char sh[TEL_SCOPE_POINTS * 2 + 1];
     char line[1024];
+    uint32_t tick = 0;
 
     while (1) {
         shared_state_t snap = {0};
@@ -107,12 +109,10 @@ static void telemetry_task(void *param)
         encode_track_buckets_hex(t3, trk[3], TEL_BUCKETS);
         encode_scope_hex(sh, scope_ds, TEL_SCOPE_POINTS);
 
-        /* CSV frame:
-         * AURA,1,mode,track,instr,wavePct,rec,play,loop_ms,head_ms,t0,t1,t2,t3,scopeHex
-         */
+        /* Lightweight header (always): AURAH,1,mode,track,instr,wavePct,rec,play,loop_ms,head_ms */
         int len = snprintf(
             line, sizeof(line),
-            "AURA,1,%d,%d,%d,%d,%d,%d,%d,%d,%s,%s,%s,%s,%s\n",
+            "AURAH,1,%d,%d,%d,%d,%d,%d,%d,%d\n",
             (int)snap.mode,
             (int)snap.active_track,
             (int)snap.active_instrument,
@@ -120,13 +120,31 @@ static void telemetry_task(void *param)
             snap.is_recording ? 1 : 0,
             snap.is_playing ? 1 : 0,
             snap.loop_length,
-            snap.playhead,
-            t0, t1, t2, t3,
-            sh);
+            snap.playhead);
 
         if (len > 0) {
             uart_write_bytes(TEL_UART_PORT, line, len);
         }
+
+        /* Heavy detail chunks less often:
+         * AURAT,1,t0,t1,t2,t3
+         * AURAS,1,scopeHex
+         */
+        if ((tick % TEL_DETAIL_DIVIDER) == 0U) {
+            int tlen = snprintf(
+                line, sizeof(line),
+                "AURAT,1,%s,%s,%s,%s\n",
+                t0, t1, t2, t3);
+            if (tlen > 0) {
+                uart_write_bytes(TEL_UART_PORT, line, tlen);
+            }
+
+            int slen = snprintf(line, sizeof(line), "AURAS,1,%s\n", sh);
+            if (slen > 0) {
+                uart_write_bytes(TEL_UART_PORT, line, slen);
+            }
+        }
+        tick++;
 
         vTaskDelay(pdMS_TO_TICKS(TEL_PERIOD_MS));
     }

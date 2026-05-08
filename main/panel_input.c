@@ -507,19 +507,14 @@ static void handle_button_edges(void)
 
 static void read_analog_and_apply(void)
 {
-    int rv = 0, rr = 0, rf = 0;
-    if (adc_oneshot_read(s_adc, SLIDER_VOL_ADC_CHANNEL, &rv) != ESP_OK)
-    {
-        return;
-    }
-    if (adc_oneshot_read(s_adc, SLIDER_BEND_ADC_CHANNEL, &rr) != ESP_OK)
-    {
-        return;
-    }
-    if (adc_oneshot_read(s_adc, DIAL_FILTER_ADC_CHANNEL, &rf) != ESP_OK)
-    {
-        return;
-    }
+    int rv = (int)(s_vol_ema * 4095.0f);
+    int rr = (int)(s_bend_ema * 4095.0f);
+    int rf = (int)(s_filt_ema * 4095.0f);
+    /* Keep controls responsive even if one ADC read glitches.
+     * We only update channels that read successfully this cycle. */
+    (void)adc_oneshot_read(s_adc, SLIDER_VOL_ADC_CHANNEL, &rv);
+    (void)adc_oneshot_read(s_adc, SLIDER_BEND_ADC_CHANNEL, &rr);
+    (void)adc_oneshot_read(s_adc, DIAL_FILTER_ADC_CHANNEL, &rf);
 
     if (rv < 0)
     {
@@ -543,11 +538,13 @@ static void read_analog_and_apply(void)
     (void)ads1115_read_norm_0_1(2, &nw, NULL); /* A2 -> Wave */
 
     const float a = 0.25f;
+    const float a_filter = 0.45f; /* faster filter response than other controls */
+    const float a_wave = 0.35f;   /* keep wavemix responsive */
     s_vol_ema += (nv - s_vol_ema) * a;
     s_bend_ema += (nr - s_bend_ema) * a;
-    s_filt_ema += (nf - s_filt_ema) * a;
+    s_filt_ema += (nf - s_filt_ema) * a_filter;
     s_echo_ema += (ne - s_echo_ema) * a;
-    s_wav_ema += (nw - s_wav_ema) * a;
+    s_wav_ema += (nw - s_wav_ema) * a_wave;
 
     float vol = s_vol_ema;
     /* Slider2: LED metronome BPM */
@@ -560,6 +557,9 @@ static void read_analog_and_apply(void)
     float f_hz = MASTER_FILTER_MIN_HZ +
                  s_filt_ema * (MASTER_FILTER_MAX_HZ - MASTER_FILTER_MIN_HZ);
     float wave = s_wav_ema;
+    /* Ensure full-endpoint behavior for wavemix dial. */
+    if (wave > 0.98f) wave = 1.0f;      /* 100% saw */
+    else if (wave < 0.02f) wave = 0.0f; /* 100% sine */
     float echo = s_echo_ema;
 
     if (shared_state_lock())

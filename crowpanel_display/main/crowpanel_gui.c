@@ -41,7 +41,7 @@ static const char *TAG = "crowpanel_gui";
 #define GUI_UART_PORT    UART_NUM_1
 #define GUI_UART_RX_PIN  44
 #define GUI_UART_TX_PIN  43
-#define GUI_UART_BAUD    921600
+#define GUI_UART_BAUD    115200
 #define GUI_UART_BUF     2048
 
 #define TL_BUCKETS    64
@@ -95,7 +95,7 @@ static uint16_t color_for_code(uint8_t code)
     case 1: return 0x67FA; /* synth */
     case 2: return 0xA27D; /* piano */
     case 3: return 0x64DF; /* steel */
-    case 4: return 0xFD20; /* trumpet */
+    case 4: return 0xFD20; /* trumpevglt */
     case 5: return 0xFAD3; /* 808 */
     case 6: return 0xF810; /* kick */
     case 7: return 0xFB40; /* snare */
@@ -300,34 +300,80 @@ static bool parse_frame(char *line, gui_state_t *st)
     for (char *t = strtok_r(line, ",", &save); t && idx < 16; t = strtok_r(NULL, ",", &save)) {
         fields[idx++] = t;
     }
-    if (idx < 15) return false;
-    if (strcmp(fields[0], "AURA") != 0 || strcmp(fields[1], "1") != 0) return false;
+    if (idx < 2) return false;
+    if (strcmp(fields[1], "1") != 0) return false;
 
-    st->mode = atoi(fields[2]);
-    st->track = atoi(fields[3]);
-    st->instr = atoi(fields[4]);
-    st->wave_pct = atoi(fields[5]);
-    st->rec = atoi(fields[6]);
-    st->play = atoi(fields[7]);
-    st->loop_ms = atoi(fields[8]);
-    st->head_ms = atoi(fields[9]);
-
-    for (int tr = 0; tr < TL_TRACKS; tr++) {
-        const char *s = fields[10 + tr];
-        if ((int)strlen(s) < TL_BUCKETS) {
+    /* Legacy monolithic frame (backward compatible). */
+    if (strcmp(fields[0], "AURA") == 0) {
+        if (idx < 15) return false;
+        st->mode = atoi(fields[2]);
+        st->track = atoi(fields[3]);
+        st->instr = atoi(fields[4]);
+        st->wave_pct = atoi(fields[5]);
+        st->rec = atoi(fields[6]);
+        st->play = atoi(fields[7]);
+        st->loop_ms = atoi(fields[8]);
+        st->head_ms = atoi(fields[9]);
+        for (int tr = 0; tr < TL_TRACKS; tr++) {
+            const char *s = fields[10 + tr];
+            if ((int)strlen(s) < TL_BUCKETS) {
+                return false;
+            }
+            for (int i = 0; i < TL_BUCKETS; i++) st->tl[tr][i] = hex_val(s[i]);
+        }
+        const char *sh = fields[14];
+        if ((int)strlen(sh) < SCOPE_POINTS * 2) {
             return false;
         }
-        for (int i = 0; i < TL_BUCKETS; i++) st->tl[tr][i] = hex_val(s[i]);
+        for (int i = 0; i < SCOPE_POINTS; i++) {
+            st->scope[i] = (uint8_t)((hex_val(sh[i * 2]) << 4) | hex_val(sh[i * 2 + 1]));
+        }
+        st->valid = true;
+        return true;
     }
-    const char *sh = fields[14];
-    if ((int)strlen(sh) < SCOPE_POINTS * 2) {
-        return false;
+
+    /* Chunked telemetry. */
+    if (strcmp(fields[0], "AURAH") == 0) {
+        if (idx < 10) return false;
+        st->mode = atoi(fields[2]);
+        st->track = atoi(fields[3]);
+        st->instr = atoi(fields[4]);
+        st->wave_pct = atoi(fields[5]);
+        st->rec = atoi(fields[6]);
+        st->play = atoi(fields[7]);
+        st->loop_ms = atoi(fields[8]);
+        st->head_ms = atoi(fields[9]);
+        st->valid = true;
+        return true;
     }
-    for (int i = 0; i < SCOPE_POINTS; i++) {
-        st->scope[i] = (uint8_t)((hex_val(sh[i * 2]) << 4) | hex_val(sh[i * 2 + 1]));
+
+    if (strcmp(fields[0], "AURAT") == 0) {
+        if (idx < 6) return false;
+        for (int tr = 0; tr < TL_TRACKS; tr++) {
+            const char *s = fields[2 + tr];
+            if ((int)strlen(s) < TL_BUCKETS) {
+                return false;
+            }
+            for (int i = 0; i < TL_BUCKETS; i++) st->tl[tr][i] = hex_val(s[i]);
+        }
+        st->valid = true;
+        return true;
     }
-    st->valid = true;
-    return true;
+
+    if (strcmp(fields[0], "AURAS") == 0) {
+        if (idx < 3) return false;
+        const char *sh = fields[2];
+        if ((int)strlen(sh) < SCOPE_POINTS * 2) {
+            return false;
+        }
+        for (int i = 0; i < SCOPE_POINTS; i++) {
+            st->scope[i] = (uint8_t)((hex_val(sh[i * 2]) << 4) | hex_val(sh[i * 2 + 1]));
+        }
+        st->valid = true;
+        return true;
+    }
+
+    return false;
 }
 
 static void render_gui_frame(const gui_state_t *st)
@@ -395,7 +441,9 @@ static void uart_rx_task(void *arg)
 
         if (ch == '\n') {
             line[l] = '\0';
-            gui_state_t tmp = {0};
+            portENTER_CRITICAL(&s_state_lock);
+            gui_state_t tmp = s_state;
+            portEXIT_CRITICAL(&s_state_lock);
             if (parse_frame(line, &tmp)) {
                 portENTER_CRITICAL(&s_state_lock);
                 s_state = tmp;

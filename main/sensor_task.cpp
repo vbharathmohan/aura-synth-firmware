@@ -34,7 +34,6 @@
 #include "shared_state.h"
 #include "loop_recorder.h"
 #include "led_task.h"
-#include "panel_input.h"
 
 #include <math.h>
 #include <string.h>
@@ -70,7 +69,7 @@ static const char *TAG = "sensor_task";
 /* Adafruit Feather V2 (ESP32) labels for SDA/SCL */
 #define I2C_SDA_PIN         GPIO_NUM_22
 #define I2C_SCL_PIN         GPIO_NUM_20
-#define I2C_FREQ_HZ         400000
+#define I2C_FREQ_HZ         100000
 
 /* ------------------------------------------------------------------ */
 /* Sensor configuration                                                */
@@ -598,8 +597,9 @@ static void sensor_polling_task(void *)
             VL53L0X_Dev_t *dev = s->get_dev();
             uint8_t ready = 0;
             VL53L0X_GetMeasurementDataReady(dev, &ready);
-            if (!ready) continue;
-
+            /* Some boards sporadically keep "ready" low even while continuous
+             * data is available. Always attempt a read so runtime doesn't stall
+             * after successful init. */
             if (VL53L0X_GetRangingMeasurementData(dev, &data) == VL53L0X_ERROR_NONE
                 && data.RangeStatus == 0) {
                 uint16_t mm = data.RangeMilliMeter;
@@ -617,8 +617,6 @@ static void sensor_polling_task(void *)
         }
 
         synth_tof_apply_gesture(esp_timer_get_time());
-
-        panel_input_poll();
 
         vTaskDelay(pdMS_TO_TICKS(SENSOR_POLL_MS));
     }
@@ -667,11 +665,17 @@ bool sensor_task_init(void)
     for (int i = 0; i < NUM_TOF_SENSORS; i++) {
         mask |= (uint8_t)(1u << i);
         shift_write(mask);
-        vTaskDelay(pdMS_TO_TICKS(60));     /* boot time + readiness */
+        vTaskDelay(pdMS_TO_TICKS(120));    /* boot time + readiness margin */
 
         s_sensors[i] = new VL53L0X(I2C_NUM_0, GPIO_NUM_MAX, GPIO_NUM_MAX);
-        if (!s_sensors[i]->init()) {
-            ESP_LOGE(TAG, "ToF %d failed to init", i);
+        bool ok = s_sensors[i]->init();
+        if (!ok) {
+            /* Robust retry: some modules need a little longer after XSHUT release. */
+            vTaskDelay(pdMS_TO_TICKS(80));
+            ok = s_sensors[i]->init();
+        }
+        if (!ok) {
+            ESP_LOGE(TAG, "ToF %d failed to init (after retry)", i);
             delete s_sensors[i];
             s_sensors[i] = nullptr;
             led_task_boot_set_sensor_ready(i, false);
