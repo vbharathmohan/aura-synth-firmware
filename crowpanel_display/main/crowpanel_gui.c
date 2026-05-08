@@ -54,6 +54,11 @@ static const char *TAG = "crowpanel_gui";
 #define PLAYHEAD_CLR  0xF810 /* pink */
 #define SCOPE_COLOR   0x07FF /* cyan */
 
+/* Diagnostic mode: lock all motion to isolate panel scan/timing drift.
+ * 1 = fixed-buffer direct draw + frozen playhead/wave
+ * 0 = normal telemetry-driven behavior */
+#define DISPLAY_DIAGNOSTIC_LOCK 0
+
 typedef struct {
     int mode, track, instr, wave_pct, rec, play, loop_ms, head_ms;
     uint8_t tl[TL_TRACKS][TL_BUCKETS];
@@ -64,9 +69,11 @@ typedef struct {
 static esp_lcd_panel_handle_t s_panel;
 static uint16_t *s_fb;
 static uint16_t *s_fb_a;
-static uint16_t *s_fb_b;
 static uint16_t *s_draw_buf;
+#if !DISPLAY_DIAGNOSTIC_LOCK
+static uint16_t *s_fb_b;
 static bool s_use_fb_a;
+#endif
 static bool s_ready;
 static TaskHandle_t s_uart_task;
 static TaskHandle_t s_render_task;
@@ -246,9 +253,11 @@ static void draw_synth_scope(const gui_state_t *st, int sx, int sy, int sw, int 
     /* Keep waveform shape anchored to X so the UI doesn't appear to scroll.
      * We animate amplitude (not phase) with playhead to preserve motion feel. */
     float amp_pulse = 1.0f;
+#if !DISPLAY_DIAGNOSTIC_LOCK
     if (st->play) {
         amp_pulse = 0.90f + 0.10f * sinf((float)st->head_ms * 0.01f);
     }
+#endif
     int prev_y = center;
     for (int i = 0; i < SCOPE_POINTS; i++) {
         int x = sx + 2 + (i * (sw - 4)) / (SCOPE_POINTS - 1);
@@ -361,9 +370,11 @@ static void render_gui_frame(const gui_state_t *st)
     }
 
     int play_x = lane_x;
+#if !DISPLAY_DIAGNOSTIC_LOCK
     if (st->loop_ms > 0) {
         play_x += (int)((int64_t)st->head_ms * lane_w / st->loop_ms);
     }
+#endif
     if (play_x < lane_x) play_x = lane_x;
     if (play_x > lane_x + lane_w - 1) play_x = lane_x + lane_w - 1;
     fill_rect(play_x, ty + 5, 3, 250, PLAYHEAD_CLR);
@@ -420,17 +431,20 @@ static void render_task(void *arg)
         }
         last_seq = seq;
 
+#if !DISPLAY_DIAGNOSTIC_LOCK
         s_use_fb_a = !s_use_fb_a;
         s_draw_buf = s_use_fb_a ? s_fb_a : s_fb_b;
+#endif
 
-        if (snap.valid) {
-            render_gui_frame(&snap);
-        } else {
-            memset(s_draw_buf, 0, LCD_H_RES * LCD_V_RES * sizeof(uint16_t));
-            fill_rect(0, 0, LCD_H_RES, LCD_V_RES, BG_COLOR);
-            draw_text5x7(16, 16, "WAITING FOR AURA TELEMETRY...", FG_COLOR, 2);
+        if (!snap.valid) {
+            /* Never push an empty/placeholder frame after lock; hold last good frame
+             * to avoid occasional visible blink on malformed UART lines. */
+            continue;
         }
+        render_gui_frame(&snap);
+#if !DISPLAY_DIAGNOSTIC_LOCK
         esp_lcd_panel_draw_bitmap(s_panel, 0, 0, LCD_H_RES, LCD_V_RES, s_draw_buf);
+#endif
     }
 }
 
@@ -446,7 +460,11 @@ bool crowpanel_gui_init(void)
 
     esp_lcd_rgb_panel_config_t cfg = {
         .data_width    = 16,
+#if DISPLAY_DIAGNOSTIC_LOCK
+        .num_fbs       = 1,
+#else
         .num_fbs       = 2,
+#endif
         .clk_src       = LCD_CLK_SRC_DEFAULT,
         .disp_gpio_num = -1,
         .pclk_gpio_num  = LCD_PIN_PCLK,
@@ -455,17 +473,18 @@ bool crowpanel_gui_init(void)
         .de_gpio_num    = LCD_PIN_DE,
         .data_gpio_nums = LCD_DATA_PINS,
         .timings = {
-            .pclk_hz           = 12 * 1000 * 1000,
+            .pclk_hz           = 10 * 1000 * 1000,
             .h_res             = LCD_H_RES,
             .v_res             = LCD_V_RES,
-            .hsync_pulse_width = 8,
-            .hsync_back_porch  = 48,
-            .hsync_front_porch = 16,
+            .hsync_pulse_width = 4,
+            .hsync_back_porch  = 43,
+            .hsync_front_porch = 8,
             .vsync_pulse_width = 4,
-            .vsync_back_porch  = 16,
-            .vsync_front_porch = 12,
+            .vsync_back_porch  = 12,
+            .vsync_front_porch = 8,
             .flags.pclk_active_neg = true,
         },
+        .psram_trans_align = 64,
         .flags.fb_in_psram = true,
     };
 
@@ -491,16 +510,28 @@ bool crowpanel_gui_init(void)
         return false;
     }
     ESP_ERROR_CHECK(esp_lcd_rgb_panel_get_frame_buffer(
+#if DISPLAY_DIAGNOSTIC_LOCK
+        s_panel, 1, (void **)&s_fb_a));
+    if (s_fb_a == NULL) {
+        ESP_LOGE(TAG, "Failed to get RGB panel frame buffer");
+        return false;
+    }
+#else
         s_panel, 2, (void **)&s_fb_a, (void **)&s_fb_b));
     if (s_fb_a == NULL || s_fb_b == NULL) {
         ESP_LOGE(TAG, "Failed to get RGB panel frame buffers");
         return false;
     }
+#endif
     memset(s_fb_a, 0, LCD_H_RES * LCD_V_RES * sizeof(uint16_t));
+#if !DISPLAY_DIAGNOSTIC_LOCK
     memset(s_fb_b, 0, LCD_H_RES * LCD_V_RES * sizeof(uint16_t));
+#endif
     s_fb = s_fb_a;
     s_draw_buf = s_fb_a;
+#if !DISPLAY_DIAGNOSTIC_LOCK
     s_use_fb_a = true;
+#endif
 
     const uart_config_t uart_cfg = {
         .baud_rate = GUI_UART_BAUD,
