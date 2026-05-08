@@ -1,8 +1,10 @@
 #include "crowpanel_gui.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -11,47 +13,46 @@
 #include "driver/uart.h"
 
 #include "esp_log.h"
+#include "esp_heap_caps.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_panel_rgb.h"
-#include "esp_lvgl_port.h"
-#include "lvgl.h"
 
 static const char *TAG = "crowpanel_gui";
 
-#define LCD_H_RES 800
-#define LCD_V_RES 480
+/* ------------------------------------------------------- */
+/* Display (kept from known working test firmware)         */
+/* ------------------------------------------------------- */
+#define LCD_H_RES     800
+#define LCD_V_RES     480
+#define LCD_PIN_BL    2
+#define LCD_PIN_PCLK  0
+#define LCD_PIN_VSYNC 41
+#define LCD_PIN_HSYNC 39
+#define LCD_PIN_DE    40
+#define LCD_DATA_PINS { \
+    8, 3, 46, 9, 1,     \
+    5, 6, 7, 15, 16, 4, \
+    45, 48, 47, 21, 14  \
+}
 
-/* Elecrow 5.0 RGB pins */
-#define PIN_LCD_D0   8
-#define PIN_LCD_D1   3
-#define PIN_LCD_D2   46
-#define PIN_LCD_D3   9
-#define PIN_LCD_D4   1
-#define PIN_LCD_D5   5
-#define PIN_LCD_D6   6
-#define PIN_LCD_D7   7
-#define PIN_LCD_D8   15
-#define PIN_LCD_D9   16
-#define PIN_LCD_D10  4
-#define PIN_LCD_D11  45
-#define PIN_LCD_D12  48
-#define PIN_LCD_D13  47
-#define PIN_LCD_D14  21
-#define PIN_LCD_D15  14
-#define PIN_LCD_DE   40
-#define PIN_LCD_VSYNC 41
-#define PIN_LCD_HSYNC 39
-#define PIN_LCD_PCLK  0
-#define PIN_LCD_BL    2
-
-/* RX-only telemetry input from instrument */
-#define GUI_UART_PORT   UART_NUM_1
-#define GUI_UART_RX_PIN GPIO_NUM_44
-#define GUI_UART_BAUD   921600
+/* ------------------------------------------------------- */
+/* UART (kept from known working test firmware)            */
+/* ------------------------------------------------------- */
+#define GUI_UART_PORT    UART_NUM_1
+#define GUI_UART_RX_PIN  44
+#define GUI_UART_TX_PIN  43
+#define GUI_UART_BAUD    921600
+#define GUI_UART_BUF     2048
 
 #define TL_BUCKETS    64
 #define TL_TRACKS     4
 #define SCOPE_POINTS  64
+
+#define BG_COLOR      0x0843 /* dark navy */
+#define FG_COLOR      0xE73C /* light text */
+#define FRAME_COLOR   0x2108
+#define PLAYHEAD_CLR  0xF810 /* pink */
+#define SCOPE_COLOR   0x07FF /* cyan */
 
 typedef struct {
     int mode, track, instr, wave_pct, rec, play, loop_ms, head_ms;
@@ -60,14 +61,18 @@ typedef struct {
     bool valid;
 } gui_state_t;
 
-static gui_state_t s_g;
-static TaskHandle_t s_task;
+static esp_lcd_panel_handle_t s_panel;
+static uint16_t *s_fb;
+static uint16_t *s_fb_a;
+static uint16_t *s_fb_b;
+static uint16_t *s_draw_buf;
+static bool s_use_fb_a;
 static bool s_ready;
-
-static lv_obj_t *s_lbl_mode, *s_lbl_track, *s_lbl_instr, *s_lbl_wave, *s_lbl_flags;
-static lv_obj_t *s_scope;
-static lv_obj_t *s_lane[TL_TRACKS][TL_BUCKETS];
-static lv_obj_t *s_playhead;
+static TaskHandle_t s_uart_task;
+static TaskHandle_t s_render_task;
+static portMUX_TYPE s_state_lock = portMUX_INITIALIZER_UNLOCKED;
+static gui_state_t s_state;
+static uint32_t s_state_seq;
 
 static uint8_t hex_val(char c)
 {
@@ -77,23 +82,135 @@ static uint8_t hex_val(char c)
     return 0;
 }
 
-static lv_color_t color_for_code(uint8_t code)
+static uint16_t color_for_code(uint8_t code)
 {
     switch (code) {
-    case 1: return lv_color_hex(0x66f2d5); /* synth */
-    case 2: return lv_color_hex(0xa78bfa); /* piano */
-    case 3: return lv_color_hex(0x60a5fa); /* steel */
-    case 4: return lv_color_hex(0xf59e0b); /* trumpet */
-    case 5: return lv_color_hex(0xfb7185); /* 808 */
-    case 6: return lv_color_hex(0xff4d6d); /* kick */
-    case 7: return lv_color_hex(0xf97316); /* snare */
-    case 8: return lv_color_hex(0xfde047); /* hihat */
-    case 9: return lv_color_hex(0x34d399); /* clap */
-    default: return lv_color_hex(0x2a355f);
+    case 1: return 0x67FA; /* synth */
+    case 2: return 0xA27D; /* piano */
+    case 3: return 0x64DF; /* steel */
+    case 4: return 0xFD20; /* trumpet */
+    case 5: return 0xFAD3; /* 808 */
+    case 6: return 0xF810; /* kick */
+    case 7: return 0xFB40; /* snare */
+    case 8: return 0xFF80; /* hihat */
+    case 9: return 0x37F3; /* clap */
+    default: return 0x2129;
     }
 }
 
-static const char *mode_name_ui(int m)
+static inline void put_pixel(int x, int y, uint16_t c)
+{
+    if ((unsigned)x < LCD_H_RES && (unsigned)y < LCD_V_RES) {
+        s_draw_buf[y * LCD_H_RES + x] = c;
+    }
+}
+
+static void fill_rect(int x, int y, int w, int h, uint16_t c)
+{
+    if (w <= 0 || h <= 0) return;
+    for (int yy = y; yy < y + h; yy++) {
+        for (int xx = x; xx < x + w; xx++) {
+            put_pixel(xx, yy, c);
+        }
+    }
+}
+
+static void draw_rect(int x, int y, int w, int h, uint16_t c)
+{
+    for (int xx = x; xx < x + w; xx++) {
+        put_pixel(xx, y, c);
+        put_pixel(xx, y + h - 1, c);
+    }
+    for (int yy = y; yy < y + h; yy++) {
+        put_pixel(x, yy, c);
+        put_pixel(x + w - 1, yy, c);
+    }
+}
+
+/* Minimal 5x7 glyphs: enough for M/T/I/W/R/P/L/H/A/U/O/D/E/C/F/S/N/Y/X and digits. */
+static const uint8_t GLYPH_NUM[10][7] = {
+    {0x0E,0x11,0x13,0x15,0x19,0x11,0x0E}, /* 0 */
+    {0x04,0x0C,0x04,0x04,0x04,0x04,0x0E}, /* 1 */
+    {0x0E,0x11,0x01,0x02,0x04,0x08,0x1F}, /* 2 */
+    {0x1E,0x01,0x01,0x0E,0x01,0x01,0x1E}, /* 3 */
+    {0x02,0x06,0x0A,0x12,0x1F,0x02,0x02}, /* 4 */
+    {0x1F,0x10,0x10,0x1E,0x01,0x01,0x1E}, /* 5 */
+    {0x0E,0x10,0x10,0x1E,0x11,0x11,0x0E}, /* 6 */
+    {0x1F,0x01,0x02,0x04,0x08,0x08,0x08}, /* 7 */
+    {0x0E,0x11,0x11,0x0E,0x11,0x11,0x0E}, /* 8 */
+    {0x0E,0x11,0x11,0x0F,0x01,0x01,0x0E}, /* 9 */
+};
+
+static uint8_t glyph_row(char ch, int row)
+{
+    if (row < 0 || row > 6) return 0;
+    if (ch >= '0' && ch <= '9') {
+        return GLYPH_NUM[ch - '0'][row];
+    }
+    switch (ch) {
+    case 'A': { static const uint8_t g[7]={0x0E,0x11,0x11,0x1F,0x11,0x11,0x11}; return g[row]; }
+    case 'C': { static const uint8_t g[7]={0x0E,0x11,0x10,0x10,0x10,0x11,0x0E}; return g[row]; }
+    case 'D': { static const uint8_t g[7]={0x1E,0x11,0x11,0x11,0x11,0x11,0x1E}; return g[row]; }
+    case 'E': { static const uint8_t g[7]={0x1F,0x10,0x10,0x1E,0x10,0x10,0x1F}; return g[row]; }
+    case 'F': { static const uint8_t g[7]={0x1F,0x10,0x10,0x1E,0x10,0x10,0x10}; return g[row]; }
+    case 'H': { static const uint8_t g[7]={0x11,0x11,0x11,0x1F,0x11,0x11,0x11}; return g[row]; }
+    case 'I': { static const uint8_t g[7]={0x1F,0x04,0x04,0x04,0x04,0x04,0x1F}; return g[row]; }
+    case 'L': { static const uint8_t g[7]={0x10,0x10,0x10,0x10,0x10,0x10,0x1F}; return g[row]; }
+    case 'M': { static const uint8_t g[7]={0x11,0x1B,0x15,0x15,0x11,0x11,0x11}; return g[row]; }
+    case 'N': { static const uint8_t g[7]={0x11,0x19,0x19,0x15,0x13,0x13,0x11}; return g[row]; }
+    case 'O': { static const uint8_t g[7]={0x0E,0x11,0x11,0x11,0x11,0x11,0x0E}; return g[row]; }
+    case 'P': { static const uint8_t g[7]={0x1E,0x11,0x11,0x1E,0x10,0x10,0x10}; return g[row]; }
+    case 'R': { static const uint8_t g[7]={0x1E,0x11,0x11,0x1E,0x14,0x12,0x11}; return g[row]; }
+    case 'S': { static const uint8_t g[7]={0x0F,0x10,0x10,0x0E,0x01,0x01,0x1E}; return g[row]; }
+    case 'T': { static const uint8_t g[7]={0x1F,0x04,0x04,0x04,0x04,0x04,0x04}; return g[row]; }
+    case 'U': { static const uint8_t g[7]={0x11,0x11,0x11,0x11,0x11,0x11,0x0E}; return g[row]; }
+    case 'W': { static const uint8_t g[7]={0x11,0x11,0x11,0x15,0x15,0x15,0x0A}; return g[row]; }
+    case 'X': { static const uint8_t g[7]={0x11,0x11,0x0A,0x04,0x0A,0x11,0x11}; return g[row]; }
+    case 'Y': { static const uint8_t g[7]={0x11,0x11,0x0A,0x04,0x04,0x04,0x04}; return g[row]; }
+    case ':': { static const uint8_t g[7]={0x00,0x04,0x04,0x00,0x04,0x04,0x00}; return g[row]; }
+    case '%': { static const uint8_t g[7]={0x18,0x19,0x02,0x04,0x08,0x13,0x03}; return g[row]; }
+    case '-': { static const uint8_t g[7]={0x00,0x00,0x00,0x1F,0x00,0x00,0x00}; return g[row]; }
+    case ' ': return 0;
+    default: return 0;
+    }
+}
+
+static void draw_char5x7(int x, int y, char ch, uint16_t c)
+{
+    for (int r = 0; r < 7; r++) {
+        uint8_t bits = glyph_row(ch, r);
+        for (int col = 0; col < 5; col++) {
+            if (bits & (1u << (4 - col))) {
+                put_pixel(x + col, y + r, c);
+            }
+        }
+    }
+}
+
+static void draw_char5x7_scaled(int x, int y, char ch, uint16_t c, int scale)
+{
+    if (scale <= 1) {
+        draw_char5x7(x, y, ch, c);
+        return;
+    }
+    for (int r = 0; r < 7; r++) {
+        uint8_t bits = glyph_row(ch, r);
+        for (int col = 0; col < 5; col++) {
+            if (bits & (1u << (4 - col))) {
+                fill_rect(x + col * scale, y + r * scale, scale, scale, c);
+            }
+        }
+    }
+}
+
+static void draw_text5x7(int x, int y, const char *s, uint16_t c, int scale)
+{
+    for (int i = 0; s[i] != '\0'; i++) {
+        draw_char5x7_scaled(x + i * (5 * scale + scale), y, s[i], c, scale);
+    }
+}
+
+static const char *mode_name_short(int m)
 {
     switch (m) {
     case 0: return "SYNTH";
@@ -101,18 +218,68 @@ static const char *mode_name_ui(int m)
     case 2: return "PIANO";
     case 3: return "FX";
     case 4: return "SAMPLE";
-    default: return "?";
+    default: return "UNK";
     }
 }
 
-static const char *instr_name_ui(int i)
+static bool synth_activity_from_tape(const gui_state_t *st, int x_idx, int *strength_out)
 {
-    switch (i) {
-    case 0: return "PIANO";
-    case 1: return "STEEL";
-    case 2: return "TRUMPET";
-    case 3: return "808";
-    default: return "?";
+    int hit = 0;
+    for (int tr = 0; tr < TL_TRACKS; tr++) {
+        if (st->tl[tr][x_idx] == 1) {
+            hit++;
+        }
+    }
+    if (strength_out != NULL) {
+        *strength_out = hit;
+    }
+    return hit > 0;
+}
+
+/* Simpler synth waveform math (tape-driven activity + wave mix). */
+static void draw_synth_scope(const gui_state_t *st, int sx, int sy, int sw, int sh)
+{
+    int center = sy + sh / 2;
+    float wave_mix = (float)st->wave_pct / 100.0f; /* 0 sine .. 1 saw */
+    if (wave_mix < 0.0f) wave_mix = 0.0f;
+    if (wave_mix > 1.0f) wave_mix = 1.0f;
+    /* Keep waveform shape anchored to X so the UI doesn't appear to scroll.
+     * We animate amplitude (not phase) with playhead to preserve motion feel. */
+    float amp_pulse = 1.0f;
+    if (st->play) {
+        amp_pulse = 0.90f + 0.10f * sinf((float)st->head_ms * 0.01f);
+    }
+    int prev_y = center;
+    for (int i = 0; i < SCOPE_POINTS; i++) {
+        int x = sx + 2 + (i * (sw - 4)) / (SCOPE_POINTS - 1);
+        int idx = (i * TL_BUCKETS) / SCOPE_POINTS;
+        if (idx < 0) idx = 0;
+        if (idx >= TL_BUCKETS) idx = TL_BUCKETS - 1;
+
+        int strength = 0;
+        bool active = synth_activity_from_tape(st, idx, &strength);
+
+        float amp = active ? (34.0f + 12.0f * (float)strength) : 8.0f;
+        amp *= amp_pulse;
+        float t = ((float)i / (float)(SCOPE_POINTS - 1)) * 6.2831853f;
+        float wt = (2.0f + 0.4f * (float)strength) * t;
+        float s = sinf(wt);
+        float saw = ((float)fmodf(wt, 6.2831853f) /
+                     3.14159265f) - 1.0f;
+        float v = (1.0f - wave_mix) * s + wave_mix * saw;
+        int y = center - (int)(v * amp);
+        if (y < sy + 2) y = sy + 2;
+        if (y > sy + sh - 3) y = sy + sh - 3;
+
+        if (i > 0) {
+            int y0 = (prev_y < y) ? prev_y : y;
+            int y1 = (prev_y > y) ? prev_y : y;
+            for (int yy = y0; yy <= y1; yy++) {
+                put_pixel(x, yy, SCOPE_COLOR);
+            }
+        }
+        put_pixel(x, y, SCOPE_COLOR);
+        prev_y = y;
     }
 }
 
@@ -138,132 +305,204 @@ static bool parse_frame(char *line, gui_state_t *st)
 
     for (int tr = 0; tr < TL_TRACKS; tr++) {
         const char *s = fields[10 + tr];
+        if ((int)strlen(s) < TL_BUCKETS) {
+            return false;
+        }
         for (int i = 0; i < TL_BUCKETS; i++) st->tl[tr][i] = hex_val(s[i]);
     }
     const char *sh = fields[14];
+    if ((int)strlen(sh) < SCOPE_POINTS * 2) {
+        return false;
+    }
     for (int i = 0; i < SCOPE_POINTS; i++) {
         st->scope[i] = (uint8_t)((hex_val(sh[i * 2]) << 4) | hex_val(sh[i * 2 + 1]));
     }
-
     st->valid = true;
     return true;
 }
 
-static void ui_build(void)
+static void render_gui_frame(const gui_state_t *st)
 {
-    lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(0x0b1020), 0);
-    lv_obj_set_style_text_color(lv_scr_act(), lv_color_hex(0xe6e9ff), 0);
+    memset(s_draw_buf, 0, LCD_H_RES * LCD_V_RES * sizeof(uint16_t));
+    fill_rect(0, 0, LCD_H_RES, LCD_V_RES, BG_COLOR);
 
-    lv_obj_t *hdr = lv_obj_create(lv_scr_act());
-    lv_obj_set_size(hdr, LCD_H_RES, 56);
-    lv_obj_align(hdr, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_set_style_radius(hdr, 0, 0);
-    lv_obj_set_style_border_width(hdr, 0, 0);
-    lv_obj_set_style_bg_color(hdr, lv_color_hex(0x111a33), 0);
+    /* Header */
+    fill_rect(0, 0, LCD_H_RES, 40, 0x10A3);
+    char line0[96];
+    char line1[96];
+    snprintf(line0, sizeof(line0), "M:%s  T:%d  I:%d  W:%d%%",
+             mode_name_short(st->mode), st->track, st->instr, st->wave_pct);
+    snprintf(line1, sizeof(line1), "R:%d P:%d L:%d H:%d",
+             st->rec, st->play, st->loop_ms, st->head_ms);
+    draw_text5x7(8, 6, line0, FG_COLOR, 2);
+    draw_text5x7(8, 22, line1, FG_COLOR, 2);
 
-    s_lbl_mode = lv_label_create(hdr);
-    s_lbl_track = lv_label_create(hdr);
-    s_lbl_instr = lv_label_create(hdr);
-    s_lbl_wave = lv_label_create(hdr);
-    s_lbl_flags = lv_label_create(hdr);
-    lv_obj_align(s_lbl_mode, LV_ALIGN_LEFT_MID, 8, -12);
-    lv_obj_align(s_lbl_track, LV_ALIGN_LEFT_MID, 180, -12);
-    lv_obj_align(s_lbl_instr, LV_ALIGN_LEFT_MID, 320, -12);
-    lv_obj_align(s_lbl_wave, LV_ALIGN_LEFT_MID, 500, -12);
-    lv_obj_align(s_lbl_flags, LV_ALIGN_LEFT_MID, 8, 12);
+    /* Scope panel */
+    const int sx = 10, sy = 52, sw = 780, sh = 140;
+    draw_rect(sx, sy, sw, sh, FRAME_COLOR);
+    draw_synth_scope(st, sx, sy, sw, sh);
 
-    s_scope = lv_chart_create(lv_scr_act());
-    lv_obj_set_size(s_scope, 780, 140);
-    lv_obj_align(s_scope, LV_ALIGN_TOP_MID, 0, 64);
-    lv_chart_set_type(s_scope, LV_CHART_TYPE_LINE);
-    lv_chart_set_point_count(s_scope, SCOPE_POINTS);
-    lv_chart_set_range(s_scope, LV_CHART_AXIS_PRIMARY_Y, 0, 255);
-    lv_chart_add_series(s_scope, lv_color_hex(0x66f2d5), LV_CHART_AXIS_PRIMARY_Y);
-
-    lv_obj_t *tl = lv_obj_create(lv_scr_act());
-    lv_obj_set_size(tl, 780, 260);
-    lv_obj_align(tl, LV_ALIGN_TOP_MID, 0, 212);
-    lv_obj_set_style_bg_color(tl, lv_color_hex(0x0e1630), 0);
-    lv_obj_set_style_border_color(tl, lv_color_hex(0x223060), 0);
-    lv_obj_set_style_pad_all(tl, 8, 0);
-
-    int lane_h = 58;
-    int lane_w = 760;
-    int bw = lane_w / TL_BUCKETS;
-    if (bw < 2) bw = 2;
-
+    /* Timeline panel */
+    const int tx = 10, ty = 208, tw = 780, th = 260;
+    draw_rect(tx, ty, tw, th, FRAME_COLOR);
+    const int lane_h = 58;
+    const int lane_w = 760;
+    const int lane_x = tx + 10;
+    const int bw = lane_w / TL_BUCKETS;
     for (int tr = 0; tr < TL_TRACKS; tr++) {
-        lv_obj_t *lane = lv_obj_create(tl);
-        lv_obj_set_size(lane, lane_w, lane_h);
-        lv_obj_align(lane, LV_ALIGN_TOP_LEFT, 10, 8 + tr * (lane_h + 4));
-        lv_obj_set_style_bg_color(lane, lv_color_hex(0x111a33), 0);
-        lv_obj_set_style_border_width(lane, 0, 0);
-        lv_obj_set_style_radius(lane, 8, 0);
-        lv_obj_set_style_pad_all(lane, 0, 0);
-
+        int ly = ty + 8 + tr * (lane_h + 4);
+        fill_rect(lane_x, ly, lane_w, lane_h, 0x10A3);
         for (int i = 0; i < TL_BUCKETS; i++) {
-            lv_obj_t *b = lv_obj_create(lane);
-            lv_obj_set_size(b, bw, lane_h - 10);
-            lv_obj_align(b, LV_ALIGN_TOP_LEFT, i * bw, 5);
-            lv_obj_set_style_bg_color(b, lv_color_hex(0x2a355f), 0);
-            lv_obj_set_style_border_width(b, 0, 0);
-            lv_obj_set_style_radius(b, 2, 0);
-            s_lane[tr][i] = b;
+            uint16_t c = color_for_code(st->tl[tr][i]);
+            int w = (st->tl[tr][i] == 1) ? 10 : 3;
+            int x = lane_x + i * bw;
+            fill_rect(x, ly + 5, w, lane_h - 10, c);
         }
     }
 
-    s_playhead = lv_obj_create(tl);
-    lv_obj_set_size(s_playhead, 3, 250);
-    lv_obj_align(s_playhead, LV_ALIGN_TOP_LEFT, 10, 5);
-    lv_obj_set_style_bg_color(s_playhead, lv_color_hex(0xff4d6d), 0);
-    lv_obj_set_style_border_width(s_playhead, 0, 0);
-}
-
-static void ui_apply(const gui_state_t *st)
-{
-    if (!st->valid) return;
-    char buf[96];
-    snprintf(buf, sizeof(buf), "MODE: %s", mode_name_ui(st->mode));
-    lv_label_set_text(s_lbl_mode, buf);
-    snprintf(buf, sizeof(buf), "TRACK: %d", st->track);
-    lv_label_set_text(s_lbl_track, buf);
-    snprintf(buf, sizeof(buf), "INSTR: %s", instr_name_ui(st->instr));
-    lv_label_set_text(s_lbl_instr, buf);
-    snprintf(buf, sizeof(buf), "WAVE: %d%%", st->wave_pct);
-    lv_label_set_text(s_lbl_wave, buf);
-    snprintf(buf, sizeof(buf), "REC:%d PLAY:%d LOOP:%dms HEAD:%dms", st->rec, st->play, st->loop_ms, st->head_ms);
-    lv_label_set_text(s_lbl_flags, buf);
-
-    lv_chart_series_t *ser = lv_chart_get_series_next(s_scope, NULL);
-    if (ser) {
-        for (int i = 0; i < SCOPE_POINTS; i++) {
-            lv_chart_set_value_by_id(s_scope, ser, (uint32_t)i, (int32_t)st->scope[i]);
-        }
-        lv_chart_refresh(s_scope);
-    }
-
-    for (int tr = 0; tr < TL_TRACKS; tr++) {
-        for (int i = 0; i < TL_BUCKETS; i++) {
-            uint8_t code = st->tl[tr][i];
-            lv_obj_t *b = s_lane[tr][i];
-            lv_obj_set_style_bg_color(b, color_for_code(code), 0);
-            lv_obj_set_width(b, (code == 1) ? 11 : 3);
-            lv_obj_set_style_radius(b, (code == 1) ? 5 : 2, 0);
-        }
-    }
-
-    int x = 10;
+    int play_x = lane_x;
     if (st->loop_ms > 0) {
-        x += (int)((int64_t)st->head_ms * 760 / st->loop_ms);
-        if (x < 10) x = 10;
-        if (x > 770) x = 770;
+        play_x += (int)((int64_t)st->head_ms * lane_w / st->loop_ms);
     }
-    lv_obj_set_x(s_playhead, x);
+    if (play_x < lane_x) play_x = lane_x;
+    if (play_x > lane_x + lane_w - 1) play_x = lane_x + lane_w - 1;
+    fill_rect(play_x, ty + 5, 3, 250, PLAYHEAD_CLR);
 }
 
-static void uart_init_rx_only(void)
+static void uart_rx_task(void *arg)
 {
-    const uart_config_t cfg = {
+    (void)arg;
+    char line[1024];
+    int l = 0;
+    uint8_t ch;
+
+    while (1) {
+        int n = uart_read_bytes(GUI_UART_PORT, &ch, 1, pdMS_TO_TICKS(20));
+        if (n <= 0) {
+            continue;
+        }
+
+        if (ch == '\n') {
+            line[l] = '\0';
+            gui_state_t tmp = {0};
+            if (parse_frame(line, &tmp)) {
+                portENTER_CRITICAL(&s_state_lock);
+                s_state = tmp;
+                s_state_seq++;
+                portEXIT_CRITICAL(&s_state_lock);
+            }
+            l = 0;
+        } else if (ch != '\r') {
+            if (l < (int)sizeof(line) - 1) {
+                line[l++] = (char)ch;
+            } else {
+                l = 0;
+            }
+        }
+    }
+}
+
+static void render_task(void *arg)
+{
+    (void)arg;
+    gui_state_t snap = {0};
+    uint32_t last_seq = 0;
+
+    while (1) {
+        portENTER_CRITICAL(&s_state_lock);
+        snap = s_state;
+        uint32_t seq = s_state_seq;
+        portEXIT_CRITICAL(&s_state_lock);
+
+        if (seq == last_seq) {
+            vTaskDelay(pdMS_TO_TICKS(5));
+            continue;
+        }
+        last_seq = seq;
+
+        s_use_fb_a = !s_use_fb_a;
+        s_draw_buf = s_use_fb_a ? s_fb_a : s_fb_b;
+
+        if (snap.valid) {
+            render_gui_frame(&snap);
+        } else {
+            memset(s_draw_buf, 0, LCD_H_RES * LCD_V_RES * sizeof(uint16_t));
+            fill_rect(0, 0, LCD_H_RES, LCD_V_RES, BG_COLOR);
+            draw_text5x7(16, 16, "WAITING FOR AURA TELEMETRY...", FG_COLOR, 2);
+        }
+        esp_lcd_panel_draw_bitmap(s_panel, 0, 0, LCD_H_RES, LCD_V_RES, s_draw_buf);
+    }
+}
+
+bool crowpanel_gui_init(void)
+{
+    gpio_config_t io_cfg = {
+        .pin_bit_mask = (1ULL << LCD_PIN_BL),
+        .mode         = GPIO_MODE_OUTPUT,
+    };
+    gpio_config(&io_cfg);
+    gpio_set_level(LCD_PIN_BL, 1);
+    vTaskDelay(pdMS_TO_TICKS(100));
+
+    esp_lcd_rgb_panel_config_t cfg = {
+        .data_width    = 16,
+        .num_fbs       = 2,
+        .clk_src       = LCD_CLK_SRC_DEFAULT,
+        .disp_gpio_num = -1,
+        .pclk_gpio_num  = LCD_PIN_PCLK,
+        .vsync_gpio_num = LCD_PIN_VSYNC,
+        .hsync_gpio_num = LCD_PIN_HSYNC,
+        .de_gpio_num    = LCD_PIN_DE,
+        .data_gpio_nums = LCD_DATA_PINS,
+        .timings = {
+            .pclk_hz           = 12 * 1000 * 1000,
+            .h_res             = LCD_H_RES,
+            .v_res             = LCD_V_RES,
+            .hsync_pulse_width = 8,
+            .hsync_back_porch  = 48,
+            .hsync_front_porch = 16,
+            .vsync_pulse_width = 4,
+            .vsync_back_porch  = 16,
+            .vsync_front_porch = 12,
+            .flags.pclk_active_neg = true,
+        },
+        .flags.fb_in_psram = true,
+    };
+
+    if (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) == 0) {
+        ESP_LOGE(TAG, "No SPIRAM heap available; 800x480 RGB framebuffer needs PSRAM.");
+        ESP_LOGE(TAG, "Enable SPIRAM in this project (sdkconfig defaults/menuconfig).");
+        return false;
+    }
+
+    esp_err_t err = esp_lcd_new_rgb_panel(&cfg, &s_panel);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_lcd_new_rgb_panel failed: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "Likely framebuffer allocation failure. Check SPIRAM config.");
+        return false;
+    }
+    ESP_ERROR_CHECK(esp_lcd_panel_reset(s_panel));
+    ESP_ERROR_CHECK(esp_lcd_panel_init(s_panel));
+    /* RGB panel backlight is handled via GPIO; some IDF RGB panel drivers
+     * return ESP_ERR_NOT_SUPPORTED for disp_on_off. Treat as optional. */
+    esp_err_t disp_err = esp_lcd_panel_disp_on_off(s_panel, true);
+    if (disp_err != ESP_OK && disp_err != ESP_ERR_NOT_SUPPORTED) {
+        ESP_LOGE(TAG, "esp_lcd_panel_disp_on_off failed: %s", esp_err_to_name(disp_err));
+        return false;
+    }
+    ESP_ERROR_CHECK(esp_lcd_rgb_panel_get_frame_buffer(
+        s_panel, 2, (void **)&s_fb_a, (void **)&s_fb_b));
+    if (s_fb_a == NULL || s_fb_b == NULL) {
+        ESP_LOGE(TAG, "Failed to get RGB panel frame buffers");
+        return false;
+    }
+    memset(s_fb_a, 0, LCD_H_RES * LCD_V_RES * sizeof(uint16_t));
+    memset(s_fb_b, 0, LCD_H_RES * LCD_V_RES * sizeof(uint16_t));
+    s_fb = s_fb_a;
+    s_draw_buf = s_fb_a;
+    s_use_fb_a = true;
+
+    const uart_config_t uart_cfg = {
         .baud_rate = GUI_UART_BAUD,
         .data_bits = UART_DATA_8_BITS,
         .parity = UART_PARITY_DISABLE,
@@ -271,116 +510,28 @@ static void uart_init_rx_only(void)
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .source_clk = UART_SCLK_DEFAULT,
     };
-    ESP_ERROR_CHECK(uart_param_config(GUI_UART_PORT, &cfg));
-    ESP_ERROR_CHECK(uart_set_pin(GUI_UART_PORT, UART_PIN_NO_CHANGE, GUI_UART_RX_PIN,
+    ESP_ERROR_CHECK(uart_driver_install(GUI_UART_PORT, GUI_UART_BUF, 0, 0, NULL, 0));
+    ESP_ERROR_CHECK(uart_param_config(GUI_UART_PORT, &uart_cfg));
+    ESP_ERROR_CHECK(uart_set_pin(GUI_UART_PORT, GUI_UART_TX_PIN, GUI_UART_RX_PIN,
                                  UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
-    ESP_ERROR_CHECK(uart_driver_install(GUI_UART_PORT, 2048, 0, 0, NULL, 0));
-}
 
-static void gui_rx_task(void *param)
-{
-    (void)param;
-    char line[1024];
-    int l = 0;
-    uint8_t ch;
-
-    while (1) {
-        int n = uart_read_bytes(GUI_UART_PORT, &ch, 1, pdMS_TO_TICKS(10));
-        if (n > 0) {
-            if (ch == '\n') {
-                line[l] = '\0';
-                gui_state_t tmp = {0};
-                if (parse_frame(line, &tmp) && lvgl_port_lock(0)) {
-                    s_g = tmp;
-                    ui_apply(&s_g);
-                    lvgl_port_unlock();
-                }
-                l = 0;
-            } else if (ch != '\r') {
-                if (l < (int)sizeof(line) - 1) line[l++] = (char)ch;
-                else l = 0;
-            }
-        } else {
-            vTaskDelay(pdMS_TO_TICKS(5));
-        }
-    }
-}
-
-bool crowpanel_gui_init(void)
-{
-    gpio_config_t bl = {};
-    bl.pin_bit_mask = (1ULL << PIN_LCD_BL);
-    bl.mode = GPIO_MODE_OUTPUT;
-    gpio_config(&bl);
-    gpio_set_level(PIN_LCD_BL, 1);
-
-    esp_lcd_rgb_panel_config_t rgb_cfg = {
-        .clk_src = LCD_CLK_SRC_PLL160M,
-        .timings = {
-            .pclk_hz = 15000000,
-            .h_res = LCD_H_RES,
-            .v_res = LCD_V_RES,
-            .hsync_pulse_width = 4,
-            .hsync_back_porch = 43,
-            .hsync_front_porch = 8,
-            .vsync_pulse_width = 4,
-            .vsync_back_porch = 12,
-            .vsync_front_porch = 8,
-            .flags = {.pclk_active_neg = 1},
-        },
-        .data_width = 16,
-        .psram_trans_align = 64,
-        .hsync_gpio_num = PIN_LCD_HSYNC,
-        .vsync_gpio_num = PIN_LCD_VSYNC,
-        .de_gpio_num = PIN_LCD_DE,
-        .pclk_gpio_num = PIN_LCD_PCLK,
-        .disp_gpio_num = -1,
-        .data_gpio_nums = {
-            PIN_LCD_D0, PIN_LCD_D1, PIN_LCD_D2, PIN_LCD_D3,
-            PIN_LCD_D4, PIN_LCD_D5, PIN_LCD_D6, PIN_LCD_D7,
-            PIN_LCD_D8, PIN_LCD_D9, PIN_LCD_D10, PIN_LCD_D11,
-            PIN_LCD_D12, PIN_LCD_D13, PIN_LCD_D14, PIN_LCD_D15,
-        },
-        .flags = {.fb_in_psram = 1},
-    };
-
-    esp_lcd_panel_handle_t panel = NULL;
-    ESP_ERROR_CHECK(esp_lcd_new_rgb_panel(&rgb_cfg, &panel));
-    ESP_ERROR_CHECK(esp_lcd_panel_reset(panel));
-    ESP_ERROR_CHECK(esp_lcd_panel_init(panel));
-    ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel, true));
-
-    const lvgl_port_cfg_t lvgl_cfg = ESP_LVGL_PORT_INIT_CONFIG();
-    ESP_ERROR_CHECK(lvgl_port_init(&lvgl_cfg));
-
-    const lvgl_port_display_cfg_t disp_cfg = {
-        .panel_handle = panel,
-        .buffer_size = LCD_H_RES * 60,
-        .double_buffer = true,
-        .hres = LCD_H_RES,
-        .vres = LCD_V_RES,
-        .monochrome = false,
-        .rotation = {.swap_xy = false, .mirror_x = false, .mirror_y = false},
-        .color_format = LV_COLOR_FORMAT_RGB565,
-        .flags = {.buff_dma = true, .buff_spiram = true, .swap_bytes = false},
-    };
-    lvgl_port_add_disp(&disp_cfg);
-
-    uart_init_rx_only();
-
-    if (lvgl_port_lock(0)) {
-        ui_build();
-        lvgl_port_unlock();
-    }
-
+    memset(&s_state, 0, sizeof(s_state));
+    s_state_seq = 0;
     s_ready = true;
-    ESP_LOGI(TAG, "CrowPanel GUI RX-only initialized");
+    ESP_LOGI(TAG, "CrowPanel GUI framebuffer renderer initialized");
     return true;
 }
 
 void crowpanel_gui_start(void)
 {
-    if (!s_ready || s_task) return;
-    xTaskCreatePinnedToCore(gui_rx_task, "crowpanel_gui", 8192, NULL, 3, &s_task, 0);
+    if (!s_ready) {
+        return;
+    }
+    if (s_uart_task == NULL) {
+        xTaskCreatePinnedToCore(uart_rx_task, "cp_uart_rx", 4096, NULL, 5, &s_uart_task, 0);
+    }
+    if (s_render_task == NULL) {
+        xTaskCreatePinnedToCore(render_task, "cp_render", 6144, NULL, 4, &s_render_task, 1);
+    }
 }
 

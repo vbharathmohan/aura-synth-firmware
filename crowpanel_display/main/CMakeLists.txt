@@ -9,7 +9,6 @@ idf_component_register(
         esp_driver_uart
         esp_driver_gpio
         esp_lcd
-        esp_lvgl_port
         esp_common
 )
 

@@ -234,6 +234,9 @@ void app_main(void)
     }
     ESP_LOGI(TAG, "[6/8] Loop recorder OK");
 
+    /* Scope ring buffer for CrowPanel waveform telemetry. */
+    audio_scope_init();
+
     /* 7. LED hardware (needed before sensor init so ready status can
      * illuminate per-sensor chunks during startup). */
     if (!led_task_init()) {
