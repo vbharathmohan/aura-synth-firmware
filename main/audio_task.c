@@ -34,7 +34,8 @@ void audio_task_run(void *param)
     int16_t *i2s_buf = (int16_t *)heap_caps_malloc(
         BLOCK_SAMPLES * 2 * sizeof(int16_t), MALLOC_CAP_DMA);
 
-    if (i2s_buf == NULL) {
+    if (i2s_buf == NULL)
+    {
         ESP_LOGE(TAG, "Failed to allocate DMA buffer — aborting audio task");
         vTaskDelete(NULL);
         return;
@@ -43,6 +44,8 @@ void audio_task_run(void *param)
     shared_state_t snap = {0};
     int block_count = 0;
     int control_counter = 0;
+    int levels_cue_voice = -1;
+    bool prev_levels_cue_pressed = false;
 
     /* Transport press flags accumulate across audio cycles. shared_state_snapshot()
      * consumes the global flags every call (~172 Hz), but loop_recorder_update()
@@ -52,34 +55,63 @@ void audio_task_run(void *param)
     bool pending_clear = false;
     bool pending_play_pause = false;
 
-    while (1) {
+    while (1)
+    {
         /* 1. Snapshot shared state (consumes one-shot triggers) */
         shared_state_snapshot(&snap);
 
         /* Latch transport edges from this cycle so they survive until
          * the next loop_recorder_update() call. */
-        if (snap.record_pressed)     pending_record = true;
-        if (snap.clear_pressed)      pending_clear = true;
-        if (snap.play_pause_pressed) pending_play_pause = true;
+        if (snap.record_pressed)
+            pending_record = true;
+        if (snap.clear_pressed)
+            pending_clear = true;
+        if (snap.play_pause_pressed)
+            pending_play_pause = true;
 
-        /* 2. Drain the note-event queue. Producers are sensor_task,
+        if (snap.levels_cue_pressed && !prev_levels_cue_pressed)
+        {
+            if (levels_cue_voice >= 0)
+            {
+                sampler_stop_voice(levels_cue_voice);
+            }
+            levels_cue_voice = sampler_trigger(SAMPLE_SLOT_LEVELS, 200, 1.0f, false);
+            ESP_LOGD(TAG, "Levels cue: on");
+        }
+        else if (!snap.levels_cue_pressed && prev_levels_cue_pressed)
+        {
+            if (levels_cue_voice >= 0)
+            {
+                sampler_stop_voice(levels_cue_voice);
+                levels_cue_voice = -1;
+            }
+            ESP_LOGD(TAG, "Levels cue: off");
+        }
+        prev_levels_cue_pressed = snap.levels_cue_pressed;
+
+        /* 3. Drain the note-event queue. Producers are sensor_task,
          * the integration-mode button task, and (later) the loop
          * recorder.  Each event becomes a sampler_trigger() call.
          * We bound the work per cycle so an over-eager producer
          * can't starve the audio loop. */
-        if (g_note_queue != NULL) {
+        if (g_note_queue != NULL)
+        {
             note_event_t evt;
             int drained = 0;
             while (drained < NOTE_QUEUE_DEPTH &&
-                   xQueueReceive(g_note_queue, &evt, 0) == pdTRUE) {
+                   xQueueReceive(g_note_queue, &evt, 0) == pdTRUE)
+            {
                 /* Recorder captures only live user events (not loop playback). */
                 loop_recorder_on_live_event(&evt);
 
                 /* Sustained synth segments are tape-driven in sensor_task; only
                  * the recorder ingests these from the queue (no sampler). */
-                if (evt.source == NOTE_SOURCE_SYNTH_NOTE && evt.duration_us > 0) {
+                if (evt.source == NOTE_SOURCE_SYNTH_NOTE && evt.duration_us > 0)
+                {
                     /* no-op */
-                } else {
+                }
+                else
+                {
                     float spd = evt.speed * shared_state_sample_speed_scale(&snap);
                     sampler_trigger(evt.slot, evt.velocity, spd, evt.loop);
                 }
@@ -89,13 +121,14 @@ void audio_task_run(void *param)
 
         /* 3. Run loop recorder at control rate */
         control_counter++;
-        if (control_counter >= CONTROL_DIVIDER) {
+        if (control_counter >= CONTROL_DIVIDER)
+        {
             control_counter = 0;
 
             /* Hand the latched press edges to the recorder. Clear the
              * latches only after the recorder has had a chance to act. */
-            snap.record_pressed     = pending_record;
-            snap.clear_pressed      = pending_clear;
+            snap.record_pressed = pending_record;
+            snap.clear_pressed = pending_clear;
             snap.play_pause_pressed = pending_play_pause;
             pending_record = false;
             pending_clear = false;
@@ -104,11 +137,12 @@ void audio_task_run(void *param)
             loop_recorder_update(&snap);
 
             /* Write transport state back to global shared state */
-            if (shared_state_lock()) {
+            if (shared_state_lock())
+            {
                 g_state.is_recording = snap.is_recording;
-                g_state.is_playing   = snap.is_playing;
-                g_state.loop_length  = snap.loop_length;
-                g_state.playhead     = snap.playhead;
+                g_state.is_playing = snap.is_playing;
+                g_state.loop_length = snap.loop_length;
+                g_state.playhead = snap.playhead;
                 shared_state_unlock();
             }
         }
@@ -116,7 +150,8 @@ void audio_task_run(void *param)
         /* 4. Run the mixer pipeline → returns a mixed block */
         audio_block_t *out = mixer_process(&snap);
 
-        if (out != NULL) {
+        if (out != NULL)
+        {
             /* Feed GUI scope (left channel). */
             audio_scope_push_i32(out->L, BLOCK_SAMPLES);
             /* 5. Convert int32 → interleaved int16 for I2S */
@@ -125,7 +160,9 @@ void audio_task_run(void *param)
 
             /* 6. Write to I2S DMA (blocks until buffer available) */
             i2s_output_write(i2s_buf, BLOCK_SAMPLES * 2 * sizeof(int16_t));
-        } else {
+        }
+        else
+        {
             /* Pool exhausted — write silence to prevent DMA underrun */
             memset(i2s_buf, 0, BLOCK_SAMPLES * 2 * sizeof(int16_t));
             i2s_output_write(i2s_buf, BLOCK_SAMPLES * 2 * sizeof(int16_t));
@@ -133,23 +170,24 @@ void audio_task_run(void *param)
 
         /* Periodic diagnostics */
         block_count++;
-        if (block_count % 1000 == 0) {
+        if (block_count % 1000 == 0)
+        {
             const char *inst_name =
-                snap.active_instrument == INST_PIANO      ? "piano" :
-                snap.active_instrument == INST_STEEL_DRUM ? "steel" :
-                snap.active_instrument == INST_TRUMPET    ? "trump" :
-                snap.active_instrument == INST_808_BASS   ? "808"   : "?";
+                snap.active_instrument == INST_PIANO ? "piano" : snap.active_instrument == INST_STEEL_DRUM ? "steel"
+                                                             : snap.active_instrument == INST_TRUMPET      ? "trump"
+                                                             : snap.active_instrument == INST_808_BASS     ? "808"
+                                                                                                           : "?";
             ESP_LOGI(TAG,
-                "Blk=%d | Pool=%d/%d | Sampler=%d | Inst=%s | "
-                "Rec=%s Play=%s Loop=%d Head=%d",
-                block_count,
-                audio_pool_available(), POOL_SIZE,
-                sampler_active_count(),
-                inst_name,
-                snap.is_recording ? "Y" : "N",
-                snap.is_playing ? "Y" : "N",
-                snap.loop_length,
-                snap.playhead);
+                     "Blk=%d | Pool=%d/%d | Sampler=%d | Inst=%s | "
+                     "Rec=%s Play=%s Loop=%d Head=%d",
+                     block_count,
+                     audio_pool_available(), POOL_SIZE,
+                     sampler_active_count(),
+                     inst_name,
+                     snap.is_recording ? "Y" : "N",
+                     snap.is_playing ? "Y" : "N",
+                     snap.loop_length,
+                     snap.playhead);
         }
     }
 }

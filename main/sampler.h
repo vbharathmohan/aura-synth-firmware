@@ -67,6 +67,7 @@ typedef struct {
     float    volume;             /* 0.0 - 1.0 */
     bool     active;
     bool     looping;
+    bool     paused;
 } sampler_voice_t;
 
 /* ------------------------------------------------------------------ */
@@ -98,6 +99,18 @@ bool sampler_register(int slot_idx, const char *name,
  * @return           Voice index (0 to MAX_VOICES-1), or -1 if failed
  */
 int sampler_trigger(int slot_idx, uint8_t velocity, float speed, bool loop);
+
+/**
+ * Pause a specific voice.
+ * Returns true if the voice was paused.
+ */
+bool sampler_pause_voice(int voice_idx);
+
+/**
+ * Resume a paused voice.
+ * Returns true if the voice was resumed.
+ */
+bool sampler_resume_voice(int voice_idx);
 
 /**
  * Stop a specific voice.
