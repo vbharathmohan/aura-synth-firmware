@@ -30,7 +30,8 @@
 #include <stdbool.h>
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 /* ------------------------------------------------------------------ */
@@ -39,51 +40,51 @@ extern "C" {
 
 /* WS2812 data line. Adjust to match your wiring. */
 #ifndef LED_STRIP_GPIO
-#define LED_STRIP_GPIO          33
+#define LED_STRIP_GPIO 33
 #endif
 
 /* Total LEDs on the strip. Bins are LED_STRIP_COUNT / 8 per ToF sensor;
  * any leftover at the end is reserved for the metronome overlay. */
 #ifndef LED_STRIP_COUNT
-#define LED_STRIP_COUNT         60
+#define LED_STRIP_COUNT 60
 #endif
 
 /* Default tempo for the metronome flash. Override at compile time. */
 #ifndef METRONOME_BPM
-#define METRONOME_BPM           128
+#define METRONOME_BPM 128
 #endif
 
-/* ------------------------------------------------------------------ */
-/* API                                                                 */
-/* ------------------------------------------------------------------ */
+    /* ------------------------------------------------------------------ */
+    /* API                                                                 */
+    /* ------------------------------------------------------------------ */
 
-/** One-time hardware bring-up (RMT channel + initial blank). Returns
- *  false if the led_strip driver fails to install. */
-bool led_task_init(void);
+    /** One-time hardware bring-up (RMT channel + initial blank). Returns
+     *  false if the led_strip driver fails to install. */
+    bool led_task_init(void);
 
-/** Launch the render + metronome tasks (Core 1, low priority). Safe to
- *  call only once. */
-void led_task_start(void);
+    /** Launch the render + metronome tasks (Core 1, low priority). Safe to
+     *  call only once. */
+    void led_task_start(void);
 
-/** Update tempo at runtime (BPM). 30..240 are reasonable. 0 disables
- *  the metronome (LEDs in the spare row stay dark). */
-void led_task_set_bpm(int bpm);
+    /** Update tempo at runtime (BPM). 30..240 are reasonable. 0 disables
+     *  the metronome (LEDs in the spare row stay dark). */
+    void led_task_set_bpm(int bpm);
 
-/* ------------------------------------------------------------------ */
-/* Boot-time status rendering (call before led_task_start)             */
-/* ------------------------------------------------------------------ */
+    /* ------------------------------------------------------------------ */
+    /* Boot-time status rendering (call before led_task_start)             */
+    /* ------------------------------------------------------------------ */
 
-/** Clear strip immediately (all LEDs off). */
-void led_task_boot_clear(void);
+    /** Clear strip immediately (all LEDs off). */
+    void led_task_boot_clear(void);
 
-/** Light one ToF bin as ready/not-ready during startup.
- *  ready=true  -> green chunk
- *  ready=false -> red chunk */
-void led_task_boot_set_sensor_ready(int sensor_idx, bool ready);
+    /** Light one ToF bin as ready/not-ready during startup.
+     *  ready=true  -> green chunk
+     *  ready=false -> red chunk */
+    void led_task_boot_set_sensor_ready(int sensor_idx, bool ready);
 
-/** Flash entire strip white, then return to previous state. */
-void led_task_boot_flash_white(uint8_t level, int duration_ms);
-
+    /** Flash entire strip white, then return to previous state. */
+    void led_task_boot_flash_white(uint8_t level, int duration_ms);
+    void led_task_boot_swoop_animation(int duration_ms);
 #ifdef __cplusplus
 }
 #endif

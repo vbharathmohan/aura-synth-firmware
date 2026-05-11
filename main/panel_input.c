@@ -104,7 +104,7 @@ static const char *TAG = "panel_input";
 #define DEBOUNCE_THRESHOLD 3
 
 #define MASTER_FILTER_MIN_HZ 300.0f
-#define MASTER_FILTER_MAX_HZ 6000.0f
+#define MASTER_FILTER_MAX_HZ 18000.0f
 
 static const gpio_num_t ROW_PINS[NUM_ROWS] = {ROW0_PIN, ROW1_PIN, ROW2_PIN};
 static const gpio_num_t COL_PINS[NUM_COLS] = {COL0_PIN, COL1_PIN, COL2_PIN};
@@ -195,7 +195,7 @@ static bool ads1115_read_norm_0_1(int channel, float *out, int16_t *raw_out)
 
     /* ADS1115 single-shot, single-ended channel, +/-4.096V, 860 SPS, comp off. */
     uint16_t cfg = (uint16_t)(0x8000u | (((uint16_t)(0x4 + (uint16_t)channel)) << 12) |
-                              (0x1u << 9) | (1u << 8) | (0x7u << 5) | 0x3u);
+                              (0x2u << 9) | (1u << 8) | (0x7u << 5) | 0x3u);
     uint8_t w[3] = {
         ADS1115_REG_CONFIG,
         (uint8_t)(cfg >> 8),
@@ -531,20 +531,33 @@ static void read_analog_and_apply(void)
 
     float nv = fminf(1.0f, (float)rv / 4095.0f);
     float nr = fminf(1.0f, (float)rr / 4095.0f);
-    float nf = fminf(1.0f, (float)rf / 4095.0f);
+    float nf = fminf(1.0f, (float)rf / 4095.0f); // filter dial on GPIO36
     float ne = s_echo_ema;
     float nw = s_wav_ema;
-    (void)ads1115_read_norm_0_1(1, &ne, NULL); /* A1 -> Echo */
-    (void)ads1115_read_norm_0_1(2, &nw, NULL); /* A2 -> Wave */
 
+    (void)ads1115_read_norm_0_1(1, &ne, NULL); // A1 -> Echo
+    (void)ads1115_read_norm_0_1(2, &nw, NULL); // A2 -> Wave
+
+    /* Update EMAs */
     const float a = 0.25f;
-    const float a_filter = 0.45f; /* faster filter response than other controls */
-    const float a_wave = 0.35f;   /* keep wavemix responsive */
     s_vol_ema += (nv - s_vol_ema) * a;
     s_bend_ema += (nr - s_bend_ema) * a;
-    s_filt_ema += (nf - s_filt_ema) * a_filter;
+    s_filt_ema += (nf - s_filt_ema) * 0.45f;
     s_echo_ema += (ne - s_echo_ema) * a;
-    s_wav_ema += (nw - s_wav_ema) * a_wave;
+    s_wav_ema += (nw - s_wav_ema) * a;
+
+    /* DEBUG PRINT: Copy and paste this line below the EMAs */
+    static float l_v, l_f, l_e, l_w;
+    if (fabsf(s_vol_ema - l_v) > 0.02f || fabsf(s_filt_ema - l_f) > 0.02f ||
+        fabsf(s_echo_ema - l_e) > 0.02f || fabsf(s_wav_ema - l_w) > 0.02f)
+    {
+        ESP_LOGI("KNOB", "K0(Vol):%.2f | Filt:%.2f | A1(Echo):%.2f | A2(Wave):%.2f",
+                 s_vol_ema, s_filt_ema, s_echo_ema, s_wav_ema);
+        l_v = s_vol_ema;
+        l_f = s_filt_ema;
+        l_e = s_echo_ema;
+        l_w = s_wav_ema;
+    }
 
     float vol = s_vol_ema;
     /* Slider2: LED metronome BPM */
@@ -558,8 +571,10 @@ static void read_analog_and_apply(void)
                  s_filt_ema * (MASTER_FILTER_MAX_HZ - MASTER_FILTER_MIN_HZ);
     float wave = s_wav_ema;
     /* Ensure full-endpoint behavior for wavemix dial. */
-    if (wave > 0.98f) wave = 1.0f;      /* 100% saw */
-    else if (wave < 0.02f) wave = 0.0f; /* 100% sine */
+    if (wave > 0.98f)
+        wave = 1.0f; /* 100% saw */
+    else if (wave < 0.02f)
+        wave = 0.0f; /* 100% sine */
     float echo = s_echo_ema;
 
     if (shared_state_lock())
@@ -590,7 +605,7 @@ void panel_input_init(void)
     memset(btn_prev, 0, sizeof(btn_prev));
     s_vol_ema = 0.85f;
     s_bend_ema = 0.5f; /* midpoint BPM */
-    s_filt_ema = 0.5f;
+    s_filt_ema = 1.0f;
     s_echo_ema = 0.0f;
     s_wav_ema = 0.0f; /* default sine */
     s_last_scan_us = 0;

@@ -28,16 +28,16 @@ static const char *TAG = "mixer";
 /* ------------------------------------------------------------------ */
 
 static synth_voice_t s_voices[NUM_TRACKS];
-static biquad_t      s_track_filters[NUM_TRACKS];
-static float         s_sample_rate = 44100.0f;
+static biquad_t s_track_filters[NUM_TRACKS];
+static float s_sample_rate = 44100.0f;
 
 /* Per-track effects chain */
 static effect_fn s_track_fx[NUM_TRACKS][MAX_TRACK_FX];
-static void     *s_track_fx_params[NUM_TRACKS][MAX_TRACK_FX];
+static void *s_track_fx_params[NUM_TRACKS][MAX_TRACK_FX];
 
 /* Master effects chain */
 static effect_fn s_master_fx[MAX_MASTER_FX];
-static void     *s_master_fx_params[MAX_MASTER_FX];
+static void *s_master_fx_params[MAX_MASTER_FX];
 
 /* ------------------------------------------------------------------ */
 /* Init                                                                */
@@ -48,12 +48,14 @@ bool mixer_init(float sample_rate)
     s_sample_rate = sample_rate;
 
     /* Init synth voices */
-    for (int i = 0; i < NUM_TRACKS; i++) {
+    for (int i = 0; i < NUM_TRACKS; i++)
+    {
         synth_voice_init(&s_voices[i], sample_rate);
     }
 
     /* Init per-track LP filters (wide open by default) */
-    for (int i = 0; i < NUM_TRACKS; i++) {
+    for (int i = 0; i < NUM_TRACKS; i++)
+    {
         biquad_init_lpf(&s_track_filters[i], 2000.0f, 0.707f, sample_rate);
     }
 
@@ -64,7 +66,8 @@ bool mixer_init(float sample_rate)
     memset(s_master_fx_params, 0, sizeof(s_master_fx_params));
 
     /* Wire up the default per-track effect: biquad LP filter in slot 0 */
-    for (int i = 0; i < NUM_TRACKS; i++) {
+    for (int i = 0; i < NUM_TRACKS; i++)
+    {
         s_track_fx[i][0] = fx_biquad;
         s_track_fx_params[i][0] = &s_track_filters[i];
     }
@@ -79,15 +82,18 @@ bool mixer_init(float sample_rate)
 
 void mixer_set_track_fx(int track, int slot, effect_fn fn, void *params)
 {
-    if (track < 0 || track >= NUM_TRACKS) return;
-    if (slot < 0 || slot >= MAX_TRACK_FX) return;
+    if (track < 0 || track >= NUM_TRACKS)
+        return;
+    if (slot < 0 || slot >= MAX_TRACK_FX)
+        return;
     s_track_fx[track][slot] = fn;
     s_track_fx_params[track][slot] = params;
 }
 
 void mixer_set_master_fx(int slot, effect_fn fn, void *params)
 {
-    if (slot < 0 || slot >= MAX_MASTER_FX) return;
+    if (slot < 0 || slot >= MAX_MASTER_FX)
+        return;
     s_master_fx[slot] = fn;
     s_master_fx_params[slot] = params;
 }
@@ -100,25 +106,30 @@ audio_block_t *mixer_process(const shared_state_t *snap)
 {
     /* Allocate the mix accumulator */
     audio_block_t *mix = audio_alloc();
-    if (mix == NULL) return NULL;
+    if (mix == NULL)
+        return NULL;
     audio_block_clear(mix);
 
     /* --- Render each track --- */
-    for (int t = 0; t < NUM_TRACKS; t++) {
+    for (int t = 0; t < NUM_TRACKS; t++)
+    {
         const track_params_t *tp = &snap->tracks[t];
 
         /* Wavemix for live synth (global MODE_SYNTH) and for synth-mode tape tracks. */
         track_params_t tp_eff = *tp;
-        if (snap->mode == MODE_SYNTH || loop_recorder_track_recorded_as_synth(t)) {
+        if (snap->mode == MODE_SYNTH || loop_recorder_track_recorded_as_synth(t))
+        {
             float w = snap->master_waveform_mix;
-            if (w < 0.0f) {
+            if (w < 0.0f)
+            {
                 w = 0.0f;
             }
-            if (w > 1.0f) {
+            if (w > 1.0f)
+            {
                 w = 1.0f;
             }
             tp_eff.waveform_mix = w;
-            tp_eff.lfo_rate     = 0.0f; /* LFO disabled */
+            tp_eff.lfo_rate = 0.0f; /* LFO disabled */
         }
 
         synth_voice_set_params(&s_voices[t], &tp_eff);
@@ -134,19 +145,23 @@ audio_block_t *mixer_process(const shared_state_t *snap)
                              loop_recorder_track_recorded_as_synth(t));
         synth_voice_set_active(&s_voices[t], synth_active);
 
-        if (!s_voices[t].active) continue;
+        if (!s_voices[t].active)
+            continue;
 
         /* Allocate a track block */
         audio_block_t *tb = audio_alloc();
-        if (tb == NULL) continue;
+        if (tb == NULL)
+            continue;
         audio_block_clear(tb);
 
         /* Render synth voice into the track block */
         synth_voice_render(&s_voices[t], tb);
 
         /* Apply per-track effects chain */
-        for (int fx = 0; fx < MAX_TRACK_FX; fx++) {
-            if (s_track_fx[t][fx] != NULL) {
+        for (int fx = 0; fx < MAX_TRACK_FX; fx++)
+        {
+            if (s_track_fx[t][fx] != NULL)
+            {
                 s_track_fx[t][fx](tb, s_track_fx_params[t][fx]);
             }
         }
@@ -157,14 +172,18 @@ audio_block_t *mixer_process(const shared_state_t *snap)
     }
 
     /* --- Process drum/piano triggers --- */
-    if (snap->drum.trigger) {
+    if (snap->drum.trigger)
+    {
         float gspd = shared_state_sample_speed_scale(snap);
-        if (snap->mode == MODE_PIANO) {
+        if (snap->mode == MODE_PIANO)
+        {
             /* Piano: pitch-shift a base sample. Slot 8 = piano base.
              * Map piano_note (0-7) to speed via semitone ratio. */
             float speed = powf(2.0f, (float)snap->drum.slot / 12.0f) * gspd;
             sampler_trigger(8, snap->drum.velocity, speed, false);
-        } else {
+        }
+        else
+        {
             /* Drums work in ANY mode — so synth + drums can play together */
             sampler_trigger(snap->drum.slot, snap->drum.velocity, gspd, false);
         }
@@ -177,29 +196,36 @@ audio_block_t *mixer_process(const shared_state_t *snap)
     audio_block_gain(mix, snap->master_volume);
 
     /* --- Sync master FX parameters from shared state (panel sliders) --- */
+
     if (s_master_fx[0] != NULL && s_master_fx_params[0] != NULL &&
-        s_master_fx[0] == fx_biquad) {
+        s_master_fx[0] == fx_biquad)
+    {
         biquad_t *mb = (biquad_t *)s_master_fx_params[0];
         biquad_update_cutoff(mb, snap->master_filter, 0.707f, s_sample_rate);
     }
     if (s_master_fx[1] != NULL && s_master_fx_params[1] != NULL &&
-        s_master_fx[1] == fx_delay) {
+        s_master_fx[1] == fx_delay)
+    {
         delay_t *dly = (delay_t *)s_master_fx_params[1];
         float r = snap->master_reverb;
-        if (r < 0.0f) {
+        if (r < 0.0f)
+        {
             r = 0.0f;
         }
-        if (r > 1.0f) {
+        if (r > 1.0f)
+        {
             r = 1.0f;
         }
         /* Short slap when low; stronger feedback when high (~3–4 audible repeats). */
-        dly->mix      = r * 0.88f;
+        dly->mix = r * 0.88f;
         dly->feedback = 0.06f + r * 0.44f;
     }
 
     /* --- Apply master effects chain --- */
-    for (int fx = 0; fx < MAX_MASTER_FX; fx++) {
-        if (s_master_fx[fx] != NULL) {
+    for (int fx = 0; fx < MAX_MASTER_FX; fx++)
+    {
+        if (s_master_fx[fx] != NULL)
+        {
             s_master_fx[fx](mix, s_master_fx_params[fx]);
         }
     }
@@ -213,12 +239,14 @@ audio_block_t *mixer_process(const shared_state_t *snap)
 
 synth_voice_t *mixer_get_voice(int track)
 {
-    if (track < 0 || track >= NUM_TRACKS) return NULL;
+    if (track < 0 || track >= NUM_TRACKS)
+        return NULL;
     return &s_voices[track];
 }
 
 biquad_t *mixer_get_track_filter(int track)
 {
-    if (track < 0 || track >= NUM_TRACKS) return NULL;
+    if (track < 0 || track >= NUM_TRACKS)
+        return NULL;
     return &s_track_filters[track];
 }

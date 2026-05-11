@@ -24,7 +24,8 @@ static const char *TAG = "effects";
 void fx_volume(audio_block_t *block, void *params)
 {
     float gain = *(float *)params;
-    for (int i = 0; i < BLOCK_SAMPLES; i++) {
+    for (int i = 0; i < BLOCK_SAMPLES; i++)
+    {
         block->L[i] = (int32_t)(block->L[i] * gain);
         block->R[i] = (int32_t)(block->R[i] * gain);
     }
@@ -65,11 +66,11 @@ void fx_biquad(audio_block_t *block, void *params)
 {
     biquad_t *f = (biquad_t *)params;
 
-    for (int i = 0; i < BLOCK_SAMPLES; i++) {
+    for (int i = 0; i < BLOCK_SAMPLES; i++)
+    {
         /* Left channel */
         float xL = (float)block->L[i];
-        float yL = f->b0 * xL + f->b1 * f->x1L + f->b2 * f->x2L
-                               - f->a1 * f->y1L - f->a2 * f->y2L;
+        float yL = f->b0 * xL + f->b1 * f->x1L + f->b2 * f->x2L - f->a1 * f->y1L - f->a2 * f->y2L;
         f->x2L = f->x1L;
         f->x1L = xL;
         f->y2L = f->y1L;
@@ -78,8 +79,7 @@ void fx_biquad(audio_block_t *block, void *params)
 
         /* Right channel */
         float xR = (float)block->R[i];
-        float yR = f->b0 * xR + f->b1 * f->x1R + f->b2 * f->x2R
-                               - f->a1 * f->y1R - f->a2 * f->y2R;
+        float yR = f->b0 * xR + f->b1 * f->x1R + f->b2 * f->x2R - f->a1 * f->y1R - f->a2 * f->y2R;
         f->x2R = f->x1R;
         f->x1R = xR;
         f->y2R = f->y1R;
@@ -97,11 +97,12 @@ bool delay_init(delay_t *d, float delay_ms, float feedback,
 {
     memset(d, 0, sizeof(delay_t));
 
-    d->buf_len  = (size_t)(delay_ms / 1000.0f * sample_rate);
+    d->buf_len = (size_t)(delay_ms / 1000.0f * sample_rate);
     d->feedback = feedback;
-    d->mix      = mix;
+    d->mix = mix;
 
-    if (d->buf_len == 0) {
+    if (d->buf_len == 0)
+    {
         ESP_LOGW(TAG, "Delay time too short, setting to 1 sample");
         d->buf_len = 1;
     }
@@ -110,11 +111,12 @@ bool delay_init(delay_t *d, float delay_ms, float feedback,
 
     /* Allocate in PSRAM */
     d->buf_L = (int32_t *)heap_caps_calloc(d->buf_len, sizeof(int32_t),
-                                            MALLOC_CAP_SPIRAM);
+                                           MALLOC_CAP_SPIRAM);
     d->buf_R = (int32_t *)heap_caps_calloc(d->buf_len, sizeof(int32_t),
-                                            MALLOC_CAP_SPIRAM);
+                                           MALLOC_CAP_SPIRAM);
 
-    if (d->buf_L == NULL || d->buf_R == NULL) {
+    if (d->buf_L == NULL || d->buf_R == NULL)
+    {
         ESP_LOGE(TAG, "Failed to allocate delay buffer (%u KB) in PSRAM",
                  (unsigned)(buf_bytes * 2 / 1024));
         delay_deinit(d);
@@ -131,17 +133,27 @@ bool delay_init(delay_t *d, float delay_ms, float feedback,
 
 void delay_deinit(delay_t *d)
 {
-    if (d->buf_L) { free(d->buf_L); d->buf_L = NULL; }
-    if (d->buf_R) { free(d->buf_R); d->buf_R = NULL; }
+    if (d->buf_L)
+    {
+        free(d->buf_L);
+        d->buf_L = NULL;
+    }
+    if (d->buf_R)
+    {
+        free(d->buf_R);
+        d->buf_R = NULL;
+    }
     d->initialized = false;
 }
 
 void fx_delay(audio_block_t *block, void *params)
 {
     delay_t *d = (delay_t *)params;
-    if (!d->initialized) return;
+    if (!d->initialized)
+        return;
 
-    for (int i = 0; i < BLOCK_SAMPLES; i++) {
+    for (int i = 0; i < BLOCK_SAMPLES; i++)
+    {
         /* Read delayed sample */
         int32_t delayed_L = d->buf_L[d->write_pos];
         int32_t delayed_R = d->buf_R[d->write_pos];

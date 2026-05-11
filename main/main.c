@@ -101,7 +101,8 @@ static bool s_master_delay_ready = false;
 static void panel_task(void *param)
 {
     (void)param;
-    while (1) {
+    while (1)
+    {
         panel_input_poll();
         vTaskDelay(pdMS_TO_TICKS(2));
     }
@@ -188,10 +189,7 @@ static biquad_t s_master_biquad;
 
 static void master_fx_init(void)
 {
-    biquad_init_lpf(&s_master_biquad,
-                    /*cutoff=*/2000.0f,
-                    /*q=*/0.707f,
-                    /*sample_rate=*/(float)SAMPLE_RATE);
+    biquad_init_lpf(&s_master_biquad, 18000.0f, 0.707f, (float)SAMPLE_RATE);
     mixer_set_master_fx(0, fx_biquad, &s_master_biquad);
 
     size_t psram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
@@ -297,10 +295,19 @@ void app_main(void)
     }
     else
     {
-        led_task_boot_flash_white(120, 250);
+        // for (int i = 0; i < 8; i++)
+        // {
+        //     note_event_post(SAMPLE_SLOT_PIANO, 200, 1.0f + (i * 0.15f), false, i, 0);
+        //     vTaskDelay(pdMS_TO_TICKS(20)); // Small offset for a "strum" effect
+        // }
+
+        // 2. Run the visual LED swoop
+        led_task_boot_swoop_animation(500);
+
+        // 3. Start normal operational tasks
         led_task_boot_clear();
         sensor_task_start();
-        ESP_LOGI(TAG, "[8/8] Sensors OK");
+        led_task_start();
     }
 
     /* Start normal LED rendering once boot animation is complete. */
